@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QString>
@@ -85,6 +86,10 @@ public:
     {
         return m_entries;
     }
+    // What the index holds for a file (path relative to the root), to notice
+    // when it changes: its blob id, "HEAD <commit>" for files without changes
+    // (the same blob as HEAD), "" for untracked files and conflicts.
+    QString indexState(const QString &relative) const;
     bool hasGroup(GitEntry::Group group) const;
     bool isBusy() const
     {
@@ -138,6 +143,7 @@ private:
     bool m_unborn = false;
     QString m_head;
     QList<GitEntry> m_entries;
+    QHash<QString, QString> m_indexIds; // files in the status -> index blob ("" = none)
 
     QList<Job> m_queue;
     QProcess *m_proc = nullptr;

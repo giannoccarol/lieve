@@ -4,6 +4,7 @@
 #include "commandpalette.h"
 #include "explorer.h"
 #include "git.h"
+#include "gitgutter.h"
 #include "gitpanel.h"
 #include "prettier.h"
 #include "projectlist.h"
@@ -485,6 +486,17 @@ void MainWindow::buildUi()
         }
         showBlame();
     });
+    // Change marks: git runs again only for files whose index entry changed.
+    connect(m_git, &Lieve::GitRepo::changed, this, [this] {
+        for (auto it = m_gutters.begin(); it != m_gutters.end();) {
+            if (it.value().isNull()) { // the document was closed
+                it = m_gutters.erase(it);
+            } else {
+                updateGutter(it.key());
+                ++it;
+            }
+        }
+    });
     connect(&m_gitWatcher, &QFileSystemWatcher::directoryChanged, m_git, &Lieve::GitRepo::scheduleRefresh);
     m_gitPoll.setInterval(10000); // catches edits made by other programs
     connect(&m_gitPoll, &QTimer::timeout, this, [this] {
@@ -827,6 +839,12 @@ void MainWindow::buildActions()
                                                 [this] {
                                                     cycleTab(-1);
                                                 });
+    addShortcut(tr("Go to Next Change"), {QKeySequence(Qt::ALT | Qt::Key_F3)}, false, [this] {
+        goToChange(true);
+    });
+    addShortcut(tr("Go to Previous Change"), {QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_F3)}, false, [this] {
+        goToChange(false);
+    });
     QAction *formatAction = addShortcut(tr("Format Document"),
                                         {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I), QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_F)},
                                         false,
@@ -1190,6 +1208,20 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc)
             Formatter::instance().warmUp(path, d->text(), projectFor(path));
         }
     });
+    // Git change marks next to the line numbers
+    if (config().value(QStringLiteral("git/gutter"), true).toBool()) {
+        GitGutter *gutter = m_gutters.value(doc);
+        if (!gutter) {
+            gutter = new GitGutter(doc, doc); // goes away with the document
+            m_gutters.insert(doc, gutter);
+            connect(gutter, &GitGutter::clicked, this, [this, doc](int line) {
+                showChange(doc, line);
+            });
+            connect(doc, &KTextEditor::Document::documentUrlChanged, this, &MainWindow::updateGutter);
+        }
+        gutter->addView(view);
+        updateGutter(doc);
+    }
     const int index = m_tabs->count() == 0 ? 0 : m_tabs->currentIndex() + 1; // next to the current tab, like VS Code
     m_tabs->insertTab(index, view, QString());
     updateTabTitles();
@@ -1828,6 +1860,50 @@ void MainWindow::updateGitBadge()
     m_actGit->setToolTip(count <= 0       ? tr("Source Control (Ctrl+Shift+G)")
                              : count == 1 ? tr("Source Control (Ctrl+Shift+G) — 1 change")
                                           : tr("Source Control (Ctrl+Shift+G) — %1 changes").arg(count));
+}
+
+void MainWindow::updateGutter(KTextEditor::Document *doc)
+{
+    GitGutter *gutter = m_gutters.value(doc);
+    if (!gutter) {
+        return;
+    }
+    const QString path = localPath(doc);
+    const QString root = m_git->root();
+    const bool tracked = !root.isEmpty() && path.startsWith(root + QLatin1Char('/'));
+    const QString relative = tracked ? path.mid(root.size() + 1) : QString();
+    gutter->setSource(root, relative, tracked ? m_git->indexState(relative) : QString());
+}
+
+// Alt+F3 / Shift+Alt+F3, like VS Code.
+void MainWindow::goToChange(bool forward)
+{
+    KTextEditor::View *view = currentView();
+    GitGutter *gutter = view ? m_gutters.value(view->document()) : nullptr;
+    const int line = gutter ? gutter->nextChange(view->cursorPosition().line(), forward) : -1;
+    if (line >= 0) {
+        view->setCursorPosition(KTextEditor::Cursor(line, 0));
+    }
+}
+
+// A click on a change mark: the file's diff, at that change.
+void MainWindow::showChange(KTextEditor::Document *doc, int line)
+{
+    const QString path = localPath(doc);
+    const QList<Lieve::GitEntry> &entries = m_git->entries();
+    for (const Lieve::GitEntry &entry : entries) {
+        if (entry.group != Lieve::GitEntry::Changes || m_git->absolutePath(entry.path) != path) {
+            continue;
+        }
+        m_git->diff(entry, [this, entry, line](const QString &text) {
+            showDiff(entry, text);
+            const int hunk = GitGutter::diffLineFor(text, line);
+            if (KTextEditor::View *view = currentView(); view && hunk >= 0) {
+                view->setCursorPosition(KTextEditor::Cursor(hunk, 0));
+            }
+        });
+        return;
+    }
 }
 
 // A read-only tab with the unified diff, added/removed lines coloured.

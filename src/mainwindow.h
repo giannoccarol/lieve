@@ -7,6 +7,7 @@
 #include <QKeySequence>
 #include <QList>
 #include <QMainWindow>
+#include <QPointer>
 #include <QStringList>
 #include <QTimer>
 
@@ -27,6 +28,7 @@ class GitRepo;
 struct GitEntry;
 }
 class Explorer;
+class GitGutter;
 class GitPanel;
 class ProjectList;
 class QAction;
@@ -123,6 +125,9 @@ private:
     void showDiff(const Lieve::GitEntry &entry, const QString &text);
     void colorDiff(KTextEditor::Document *doc);
     void updateGitBadge();
+    void updateGutter(KTextEditor::Document *doc);
+    void goToChange(bool forward);
+    void showChange(KTextEditor::Document *doc, int line);
     QString documentTitle(KTextEditor::Document *doc) const;
 
     // Bottom status bar
@@ -171,6 +176,7 @@ private:
     QString m_blameHead;
     QHash<QString, QString> m_gitEmails; // repository -> user.email
     QHash<KTextEditor::View *, KTextEditor::InlineNoteProvider *> m_blameNotes; // inline blame per view
+    QHash<KTextEditor::Document *, QPointer<GitGutter>> m_gutters; // git change marks of each open file
     QWidget *m_body = nullptr;
     TerminalPanel *m_terminal = nullptr;
     QuickOpen *m_quickOpen = nullptr;

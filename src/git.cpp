@@ -103,6 +103,7 @@ void GitRepo::resetState()
     m_behind = 0;
     m_unborn = false;
     m_entries.clear();
+    m_indexIds.clear();
 }
 
 void GitRepo::setDirectory(const QString &dir)
@@ -166,6 +167,15 @@ bool GitRepo::hasGroup(GitEntry::Group group) const
 QString GitRepo::absolutePath(const QString &relative) const
 {
     return QDir(m_root).filePath(relative);
+}
+
+QString GitRepo::indexState(const QString &relative) const
+{
+    const auto it = m_indexIds.constFind(relative);
+    if (it != m_indexIds.constEnd()) {
+        return it.value();
+    }
+    return m_root.isEmpty() || m_head.isEmpty() ? QString() : QStringLiteral("HEAD ") + m_head;
 }
 
 void GitRepo::setBusy(bool busy)
@@ -289,6 +299,7 @@ void GitRepo::scheduleRefresh()
 void GitRepo::parseStatus(const QByteArray &out)
 {
     m_entries.clear();
+    m_indexIds.clear();
     m_branch.clear();
     m_upstream.clear();
     m_ahead = 0;
@@ -321,6 +332,7 @@ void GitRepo::parseStatus(const QByteArray &out)
         const char kind = r.at(0);
         if (kind == '?') {
             m_entries.append({GitEntry::Changes, QLatin1Char('U'), QString::fromUtf8(r.mid(2)), {}});
+            m_indexIds.insert(m_entries.last().path, QString());
             continue;
         }
         if (r.size() < 4 || (kind != '1' && kind != '2' && kind != 'u')) {
@@ -330,9 +342,14 @@ void GitRepo::parseStatus(const QByteArray &out)
         const char y = r.at(3);
         if (kind == 'u') {
             m_entries.append({GitEntry::Conflicts, QLatin1Char('!'), QString::fromUtf8(afterSpaces(r, 10)), {}});
+            m_indexIds.insert(m_entries.last().path, QString());
             continue;
         }
         const QString path = QString::fromUtf8(afterSpaces(r, kind == '1' ? 8 : 9));
+        // "<kind> <XY> <sub> <mH> <mI> <mW> <hH> <hI> ...": the index blob is the 8th field.
+        QByteArray indexId = afterSpaces(r, 7);
+        indexId = indexId.left(indexId.indexOf(' '));
+        m_indexIds.insert(path, indexId.count('0') == indexId.size() ? QString() : QString::fromLatin1(indexId));
         QString origPath;
         if (kind == '2' && i + 1 < records.size()) {
             origPath = QString::fromUtf8(records.at(++i));
