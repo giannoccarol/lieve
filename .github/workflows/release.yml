@@ -13,7 +13,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install dependencies
-        run: pacman -Syu --noconfirm --needed base-devel git pkgconf github-cli qt6-base qt6-svg ktexteditor kparts kdbusaddons kwindowsystem syntax-highlighting
+        run: pacman -Syu --noconfirm --needed base-devel git pkgconf github-cli qt6-base qt6-svg ktexteditor kparts kdbusaddons kwindowsystem syntax-highlighting ki18n qt6-tools
       - uses: actions/checkout@v4
       - name: Check that the tag matches src/version.h
         run: |

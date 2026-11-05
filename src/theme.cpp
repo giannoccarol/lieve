@@ -13,6 +13,9 @@
 #include <QStackedWidget>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QHash>
+#include <QRegularExpression>
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
@@ -25,7 +28,8 @@ namespace
 {
 Colors g_colors;
 QString g_editorTheme;
-QString g_konsoleProfile;
+QString g_konsoleDir; // Lieve's private Konsole profiles, one per shell
+bool g_konsoleColors = false; // they use the editor's colours
 bool g_styled = false;
 
 QColor mix(const QColor &a, const QColor &b, double t)
@@ -144,12 +148,13 @@ QString buildStyleSheet(const Colors &c)
 
     QString s = QStringLiteral(R"(
 /* ---------- activity bar ---------- */
-QWidget#central, #titleBar, #statusBar { background: @base; }
+/* the window paints @base itself, with rounded corners when it has no system frame */
+QWidget#central, #titleBar, #statusBar { background: transparent; }
 QToolButton#statusItem { background: transparent; border: none; border-radius: 4px; padding: 1px 6px; color: @dim; font-size: 12px; }
 QToolButton#statusItem:hover { background: @tileHover; color: @fg; }
 QToolButton#statusAccent { background: @accent; color: @accentText; border: none; border-radius: 4px; padding: 1px 8px; font-size: 12px; }
 QToolButton#statusAccent:hover { background: @accentHover; }
-#activityBar { background: @base; border: none; padding: 2px 0px; spacing: 4px; }
+#activityBar { background: transparent; border: none; padding: 2px 0px; spacing: 4px; }
 /* each icon sits on a rounded tile: soft on hover, raised when active */
 QToolBar#activityBar QToolButton { background: transparent; border: 1px solid transparent; border-radius: 9px; padding: 7px; margin: 0px 6px; }
 QToolBar#activityBar QToolButton:hover { background: @tileHover; }
@@ -186,6 +191,7 @@ QLabel#sideTitle { color: @titleText; font-size: 11px; font-weight: 600; letter-
 #sideStack QToolButton:hover { background: @hover; }
 #sideStack QToolButton:checked { background: @accentSoft; border: 1px solid @accent; }
 #sideStack QToolButton::menu-indicator { image: none; width: 0px; }
+QToolButton#shellMenu::menu-indicator { image: none; width: 0px; }
 #sideStack QLineEdit, #overlay QLineEdit, #chooserFrame QLineEdit, QPlainTextEdit#commitMessage {
     background: @input; color: @fg; border: 1px solid @inputBorder; border-radius: 4px; padding: 4px 6px;
     selection-background-color: @accent; selection-color: @accentText; }
@@ -362,17 +368,33 @@ private:
     QPainterPath m_outline;
 };
 
-// A private Konsole profile with the editor's colours. It lives in Lieve's own
-// data folder, which only Lieve adds to Konsole's search path: the Konsole app
-// and its profiles are left alone.
+// Lieve's own Konsole profiles (one per shell, see konsoleProfile()) and colour
+// scheme. They live in Lieve's data folder, which only Lieve adds to Konsole's
+// search path: the Konsole app and its profiles are left alone.
 void prepareKonsole(const Colors &c)
 {
-    if (!config().value(QStringLiteral("terminal/matchEditor"), true).toBool()) {
-        return;
-    }
     const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/lieve/xdg");
     const QString dir = base + QStringLiteral("/konsole");
     if (!QDir().mkpath(dir)) {
+        return;
+    }
+    // Profiles are written again as terminals open, so Konsole never picks up
+    // one left by an older run (another shell path, other colours).
+    const QStringList old = QDir(dir).entryList({QStringLiteral("*.profile")}, QDir::Files);
+    for (const QString &name : old) {
+        QFile::remove(dir + QLatin1Char('/') + name);
+    }
+
+    QByteArray dirs = qgetenv("XDG_DATA_DIRS");
+    if (dirs.isEmpty()) {
+        dirs = "/usr/local/share:/usr/share";
+    }
+    if (!dirs.split(':').contains(base.toUtf8())) {
+        qputenv("XDG_DATA_DIRS", dirs + ':' + base.toUtf8());
+    }
+    g_konsoleDir = dir;
+
+    if (!config().value(QStringLiteral("terminal/matchEditor"), true).toBool()) {
         return;
     }
 
@@ -406,42 +428,7 @@ void prepareKonsole(const Colors &c)
         schemeFile.commit();
     }
 
-    // The profile copies the user's default Konsole profile (font, shell...) and
-    // only changes the colours and the margin.
-    const QString profilePath = dir + QStringLiteral("/Lieve.profile");
-    QFile::remove(profilePath);
-    {
-        KConfig profile(profilePath, KConfig::SimpleConfig);
-        const QString userDefault = KConfig(QStringLiteral("konsolerc")).group(QStringLiteral("Desktop Entry")).readEntry("DefaultProfile");
-        const QString userProfile = userDefault.isEmpty() ? QString() : QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("konsole/") + userDefault);
-        if (!userProfile.isEmpty()) {
-            KConfig source(userProfile, KConfig::SimpleConfig);
-            const QStringList groups = source.groupList();
-            for (const QString &name : groups) {
-                const KConfigGroup from = source.group(name);
-                KConfigGroup to = profile.group(name);
-                const auto entries = from.entryMap();
-                for (auto it = entries.cbegin(); it != entries.cend(); ++it) {
-                    to.writeEntry(it.key(), it.value());
-                }
-            }
-        }
-        KConfigGroup general = profile.group(QStringLiteral("General"));
-        general.writeEntry("Name", QStringLiteral("Lieve"));
-        general.writeEntry("Parent", QStringLiteral("FALLBACK/"));
-        general.writeEntry("TerminalMargin", 6);
-        profile.group(QStringLiteral("Appearance")).writeEntry("ColorScheme", QStringLiteral("Lieve"));
-        profile.sync();
-    }
-
-    QByteArray dirs = qgetenv("XDG_DATA_DIRS");
-    if (dirs.isEmpty()) {
-        dirs = "/usr/local/share:/usr/share";
-    }
-    if (!dirs.split(':').contains(base.toUtf8())) {
-        qputenv("XDG_DATA_DIRS", dirs + ':' + base.toUtf8());
-    }
-    g_konsoleProfile = QStringLiteral("Lieve");
+    g_konsoleColors = true;
 }
 }
 
@@ -518,6 +505,8 @@ QIcon glyph(Glyph kind)
     case Glyph::Panel:
         stroke = QStringLiteral("M2.5 3.5h11v9h-11zM2.5 9.5h11");
         fill = QStringLiteral("M2.5 9.5h11v3h-11z");
+        break;    case Glyph::ChevronDown:
+        stroke = QStringLiteral("M5 6.5l3 3 3-3");
         break;
     }
     const auto svg = [&](const QColor &color, bool filled) {
@@ -565,9 +554,54 @@ QString editorThemeName()
     return g_editorTheme;
 }
 
-QString konsoleProfile()
+QString konsoleProfile(const QString &shell)
 {
-    return g_konsoleProfile;
+    if (g_konsoleDir.isEmpty() || shell.isEmpty()) {
+        return {};
+    }
+    QString id = QFileInfo(shell).fileName();
+    id.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]")), QStringLiteral("_"));
+    const QString name = QStringLiteral("Lieve-") + id;
+    static QHash<QString, QString> written; // profile name -> shell path
+    if (written.value(name) == shell) {
+        return name;
+    }
+
+    // A copy of the user's default Konsole profile (font, scrollback...) that
+    // runs this shell, with the editor's colours and a small margin.
+    const QString path = g_konsoleDir + QLatin1Char('/') + name + QStringLiteral(".profile");
+    QFile::remove(path);
+    {
+        KConfig profile(path, KConfig::SimpleConfig);
+        const QString userDefault = KConfig(QStringLiteral("konsolerc")).group(QStringLiteral("Desktop Entry")).readEntry("DefaultProfile");
+        const QString userProfile =
+            userDefault.isEmpty() ? QString() : QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("konsole/") + userDefault);
+        if (!userProfile.isEmpty() && !userProfile.startsWith(g_konsoleDir)) {
+            KConfig source(userProfile, KConfig::SimpleConfig);
+            const QStringList groups = source.groupList();
+            for (const QString &group : groups) {
+                const KConfigGroup from = source.group(group);
+                KConfigGroup to = profile.group(group);
+                const auto entries = from.entryMap();
+                for (auto it = entries.cbegin(); it != entries.cend(); ++it) {
+                    to.writeEntry(it.key(), it.value());
+                }
+            }
+        }
+        KConfigGroup general = profile.group(QStringLiteral("General"));
+        general.writeEntry("Name", name);
+        general.writeEntry("Parent", QStringLiteral("FALLBACK/"));
+        general.writeEntry("Command", shell);
+        if (g_konsoleColors) {
+            general.writeEntry("TerminalMargin", 6);
+            profile.group(QStringLiteral("Appearance")).writeEntry("ColorScheme", QStringLiteral("Lieve"));
+        }
+        if (!profile.sync()) {
+            return {};
+        }
+    }
+    written.insert(name, shell);
+    return name;
 }
 
 QIcon activityIcon(const QIcon &base, int badge)

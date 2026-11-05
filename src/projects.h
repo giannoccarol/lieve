@@ -33,6 +33,6 @@ QString gitBranch(const QString &dir);
 QString projectRootFor(const QString &dir);
 
 QString prettyPath(const QString &path); // /home/me/x -> ~/x
-QString relativeTime(qint64 secondsSinceEpoch); // "2 ore fa"
-QString relativeAge(qint64 secondsSinceEpoch); // "6 mesi fa", for older dates too
+QString relativeTime(qint64 secondsSinceEpoch); // "2 hours ago"
+QString relativeAge(qint64 secondsSinceEpoch); // "6 months ago", for older dates too
 }

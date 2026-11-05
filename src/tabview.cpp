@@ -145,7 +145,7 @@ int TabView::insertTab(int index, QWidget *page, const QString &text)
     close->setIconSize(QSize(16, 16));
     close->setAutoRaise(true);
     close->setFocusPolicy(Qt::NoFocus);
-    close->setToolTip(QStringLiteral("Chiudi"));
+    close->setToolTip(tr("Close"));
     connect(close, &QToolButton::clicked, this, [this, close] {
         for (int i = 0; i < m_bar->count(); ++i) {
             if (m_bar->tabButton(i, QTabBar::RightSide) == close) {

@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include "blame.h"
 #include "explorer.h"
 #include "git.h"
 #include "gitpanel.h"
@@ -177,6 +178,9 @@ public:
     }
     void set(int line, const QString &text)
     {
+        if ((text.isEmpty() ? -1 : line) == m_line && text == m_text) {
+            return;
+        }
         const int old = m_line;
         m_line = text.isEmpty() ? -1 : line;
         m_text = text;
@@ -274,6 +278,9 @@ MainWindow::MainWindow(QWidget *parent)
         m_titleBar->setWindowButtonsVisible(false);
     } else {
         setWindowFlag(Qt::FramelessWindowHint, true);
+        // Plasma rounds the corners of the windows it frames; without its frame
+        // Lieve draws its own rounded corners on a see-through window.
+        setAttribute(Qt::WA_TranslucentBackground, true);
     }
 
     // Defaults for a new window: last window size and panel sizes.
@@ -303,6 +310,9 @@ MainWindow::~MainWindow()
         delete it.value();
     }
     m_blameNotes.clear();
+    for (DocumentBlame *blame : std::as_const(m_blames)) {
+        blame->disconnect(this);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -334,9 +344,6 @@ void MainWindow::buildUi()
     outer->addWidget(m_status);
     connect(&Updater::instance(), &Updater::stateChanged, this, &MainWindow::updateUpdaterStatus);
     connect(m_status, &StatusBar::itemClicked, this, &MainWindow::onStatusClicked);
-    m_blameTimer.setSingleShot(true);
-    m_blameTimer.setInterval(350);
-    connect(&m_blameTimer, &QTimer::timeout, this, &MainWindow::runBlame);
     auto *layout = new QHBoxLayout(m_body);
     layout->setContentsMargins(4, 0, 6, 2);
     layout->setSpacing(2);
@@ -351,13 +358,13 @@ void MainWindow::buildUi()
     m_activityBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     m_activityBar->setContextMenuPolicy(Qt::PreventContextMenu);
     m_actExplorer = m_activityBar->addAction(Theme::activityIcon(themeIcon({"folder-open", "document-open-folder", "folder"})),
-                                             QStringLiteral("Esplora risorse (Ctrl+Shift+E)"));
-    m_actSearch = m_activityBar->addAction(Theme::activityIcon(themeIcon({"edit-find", "search", "system-search"})), QStringLiteral("Cerca (Ctrl+Shift+F)"));
+                                             tr("Explorer (Ctrl+Shift+E)"));
+    m_actSearch = m_activityBar->addAction(Theme::activityIcon(themeIcon({"edit-find", "search", "system-search"})), tr("Search (Ctrl+Shift+F)"));
     m_gitIcon = themeIcon({"vcs-branch", "vcs-commit", "git"});
-    m_actGit = m_activityBar->addAction(Theme::activityIcon(m_gitIcon), QStringLiteral("Controllo del codice sorgente (Ctrl+Shift+G)"));
+    m_actGit = m_activityBar->addAction(Theme::activityIcon(m_gitIcon), tr("Source Control (Ctrl+Shift+G)"));
     // Layout toggles live in the title bar, like VS Code's.
-    m_actSidebar = new QAction(Theme::glyph(Theme::Glyph::Sidebar), QStringLiteral("Barra laterale (Ctrl+B)"), this);
-    m_actTerminal = new QAction(Theme::glyph(Theme::Glyph::Panel), QStringLiteral("Terminale (Ctrl+J)"), this);
+    m_actSidebar = new QAction(Theme::glyph(Theme::Glyph::Sidebar), tr("Side Bar (Ctrl+B)"), this);
+    m_actTerminal = new QAction(Theme::glyph(Theme::Glyph::Panel), tr("Terminal (Ctrl+J)"), this);
     for (QAction *a : {m_actExplorer, m_actSearch, m_actGit, m_actTerminal, m_actSidebar}) {
         a->setCheckable(true);
     }
@@ -462,6 +469,21 @@ void MainWindow::buildUi()
     });
     connect(m_git, &Lieve::GitRepo::changed, this, &MainWindow::updateGitBadge);
     connect(m_git, &Lieve::GitRepo::changed, this, &MainWindow::updateGitStatus);
+    // A commit, checkout or pull (also from the terminal) moves HEAD: blame again.
+    connect(m_git, &Lieve::GitRepo::changed, this, [this] {
+        if (m_git->head() == m_blameHead) {
+            return;
+        }
+        const bool first = m_blameHead.isEmpty();
+        m_blameHead = m_git->head();
+        if (first) {
+            return;
+        }
+        for (auto it = m_blames.cbegin(); it != m_blames.cend(); ++it) {
+            m_staleBlames.insert(it.key());
+        }
+        showBlame();
+    });
     connect(&m_gitWatcher, &QFileSystemWatcher::directoryChanged, m_git, &Lieve::GitRepo::scheduleRefresh);
     m_gitPoll.setInterval(10000); // catches edits made by other programs
     connect(&m_gitPoll, &QTimer::timeout, this, [this] {
@@ -539,7 +561,7 @@ QWidget *MainWindow::buildChooserPage()
     titleFont.setPointSizeF(titleFont.pointSizeF() * 1.8);
     title->setFont(titleFont);
     titles->addWidget(title);
-    titles->addWidget(dimLabel(QStringLiteral("Scegli un progetto"), column));
+    titles->addWidget(dimLabel(tr("Choose a project"), column));
     header->addWidget(logo);
     header->addSpacing(8);
     header->addLayout(titles);
@@ -558,7 +580,7 @@ QWidget *MainWindow::buildChooserPage()
     v->addSpacing(8);
 
     auto *buttons = new QHBoxLayout;
-    auto *openFolder = new QPushButton(QIcon::fromTheme(QStringLiteral("folder-open")), QStringLiteral("Apri cartella…"), column);
+    auto *openFolder = new QPushButton(QIcon::fromTheme(QStringLiteral("folder-open")), tr("Open Folder…"), column);
     openFolder->setObjectName(QStringLiteral("secondaryButton"));
     buttons->addWidget(openFolder);
     buttons->addSpacing(8);
@@ -567,7 +589,7 @@ QWidget *MainWindow::buildChooserPage()
     for (const QString &r : roots) {
         prettyRoots << prettyPath(r);
     }
-    auto *hint = dimLabel(QStringLiteral("Invio apre · Ctrl+Invio in una nuova finestra · progetti cercati in %1 (Ctrl+, per cambiare)")
+    auto *hint = dimLabel(tr("Enter to open · Ctrl+Enter to open in a new window · projects are searched in %1 (Ctrl+, to change)")
                               .arg(prettyRoots.isEmpty() ? QStringLiteral("—") : prettyRoots.join(QStringLiteral(", "))),
                           column);
     hint->setWordWrap(true);
@@ -608,12 +630,12 @@ QWidget *MainWindow::buildEmptyPage()
     grid->setHorizontalSpacing(18);
     grid->setVerticalSpacing(8);
     const QList<QPair<QString, QString>> rows = {
-        {QStringLiteral("Apri file"), QStringLiteral("Ctrl+P")},
-        {QStringLiteral("Cerca nei file"), QStringLiteral("Ctrl+Shift+F")},
-        {QStringLiteral("Esplora risorse"), QStringLiteral("Ctrl+Shift+E")},
-        {QStringLiteral("Mostra/nascondi terminale"), QStringLiteral("Ctrl+J")},
-        {QStringLiteral("Cambia progetto"), QStringLiteral("Ctrl+R")},
-        {QStringLiteral("Impostazioni"), QStringLiteral("Ctrl+,")},
+        {tr("Go to File"), QStringLiteral("Ctrl+P")},
+        {tr("Find in Files"), QStringLiteral("Ctrl+Shift+F")},
+        {tr("Explorer"), QStringLiteral("Ctrl+Shift+E")},
+        {tr("Toggle Terminal"), QStringLiteral("Ctrl+J")},
+        {tr("Switch Project"), QStringLiteral("Ctrl+R")},
+        {tr("Settings"), QStringLiteral("Ctrl+,")},
     };
     int row = 0;
     for (const auto &[label, keys] : rows) {
@@ -650,7 +672,7 @@ void MainWindow::buildSwitcher()
     auto *layout = new QVBoxLayout(m_switcher);
     layout->setContentsMargins(6, 6, 6, 6);
     m_switcherList = new ProjectList(m_switcher);
-    m_switcherList->setPlaceholderText(QStringLiteral("Cerca progetto… (Invio: apri · Ctrl+Invio: sostituisci in questa finestra)"));
+    m_switcherList->setPlaceholderText(tr("Search projects… (Enter: open · Ctrl+Enter: replace in this window)"));
     layout->addWidget(m_switcherList);
     m_switcher->hide();
 
@@ -720,68 +742,68 @@ QAction *MainWindow::addShortcut(const QString &text, const QList<QKeySequence> 
 
 void MainWindow::buildActions()
 {
-    addShortcut(QStringLiteral("Apri file rapidamente"), {QKeySequence(Qt::CTRL | Qt::Key_P), QKeySequence(Qt::CTRL | Qt::Key_E)}, true, [this] {
+    QAction *quickOpenAction = addShortcut(tr("Quick Open"), {QKeySequence(Qt::CTRL | Qt::Key_P), QKeySequence(Qt::CTRL | Qt::Key_E)}, true, [this] {
         if (!m_root.isEmpty()) {
             m_quickOpen->popup(m_mru);
         }
     });
-    addShortcut(QStringLiteral("Esplora risorse"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E)}, true, [this] {
+    addShortcut(tr("Explorer"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E)}, true, [this] {
         showSidePage(ExplorerPage, false);
         m_explorer->focusTree();
     });
-    addShortcut(QStringLiteral("Cerca nei file"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F)}, true, [this] {
+    addShortcut(tr("Find in Files"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F)}, true, [this] {
         showSearch(selectedText());
     });
-    addShortcut(QStringLiteral("Controllo del codice sorgente"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G)}, true, [this] {
+    QAction *sourceControlAction = addShortcut(tr("Source Control"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G)}, true, [this] {
         showSidePage(GitPage, false);
         m_gitPanel->focusMessage();
     });
-    addShortcut(QStringLiteral("Mostra/nascondi barra laterale"), {QKeySequence(Qt::CTRL | Qt::Key_B)}, false, [this] {
+    addShortcut(tr("Toggle Side Bar"), {QKeySequence(Qt::CTRL | Qt::Key_B)}, false, [this] {
         setSidebarVisible(m_side->isHidden());
     });
-    addShortcut(QStringLiteral("Mostra/nascondi pannello"), {QKeySequence(Qt::CTRL | Qt::Key_J)}, true, [this] {
+    addShortcut(tr("Toggle Panel"), {QKeySequence(Qt::CTRL | Qt::Key_J)}, true, [this] {
         setTerminalVisible(m_terminal->isHidden());
     });
-    addShortcut(QStringLiteral("Terminale"),
+    addShortcut(tr("Terminal"),
                 {QKeySequence(Qt::CTRL | Qt::Key_QuoteLeft), QKeySequence(Qt::CTRL | Qt::Key_Ograve)},
                 true,
                 [this] {
                     toggleTerminalFocus();
                 });
-    QAction *projects = addShortcut(QStringLiteral("Progetti…"), {QKeySequence(Qt::CTRL | Qt::Key_R)}, false, [this] {
+    QAction *projects = addShortcut(tr("Projects…"), {QKeySequence(Qt::CTRL | Qt::Key_R)}, false, [this] {
         if (m_root.isEmpty()) {
             focusChooser();
         } else {
             showProjectSwitcher();
         }
     });
-    QAction *openFolderAction = addShortcut(QStringLiteral("Apri cartella…"), {QKeySequence(QStringLiteral("Ctrl+K, Ctrl+O"))}, false, [this] {
+    QAction *openFolderAction = addShortcut(tr("Open Folder…"), {QKeySequence(QStringLiteral("Ctrl+K, Ctrl+O"))}, false, [this] {
         WindowManager::instance().openFolderDialog(this);
     });
-    QAction *newWindow = addShortcut(QStringLiteral("Nuova finestra"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N)}, false, [] {
+    QAction *newWindow = addShortcut(tr("New Window"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N)}, false, [] {
         WindowManager::instance().showChooser();
     });
-    QAction *newTerm = addShortcut(QStringLiteral("Nuovo terminale"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_QuoteLeft)}, true, [this] {
+    QAction *newTerm = addShortcut(tr("New Terminal"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_QuoteLeft)}, true, [this] {
         newTerminal();
     });
-    QAction *newFile = addShortcut(QStringLiteral("Nuovo file"), {QKeySequence(Qt::CTRL | Qt::Key_N)}, false, [this] {
+    QAction *newFile = addShortcut(tr("New File"), {QKeySequence(Qt::CTRL | Qt::Key_N)}, false, [this] {
         newUntitled();
     });
-    QAction *openFileAction = addShortcut(QStringLiteral("Apri file…"), {QKeySequence(Qt::CTRL | Qt::Key_O)}, false, [this] {
+    QAction *openFileAction = addShortcut(tr("Open File…"), {QKeySequence(Qt::CTRL | Qt::Key_O)}, false, [this] {
         openFileDialog();
     });
-    QAction *saveAllAction = addShortcut(QStringLiteral("Salva tutto"), {QKeySequence(QStringLiteral("Ctrl+K, S"))}, false, [this] {
+    QAction *saveAllAction = addShortcut(tr("Save All"), {QKeySequence(QStringLiteral("Ctrl+K, S"))}, false, [this] {
         saveAll();
     });
-    addShortcut(QStringLiteral("Chiudi scheda"), {QKeySequence(Qt::CTRL | Qt::Key_W), QKeySequence(Qt::CTRL | Qt::Key_F4)}, false, [this] {
+    addShortcut(tr("Close Editor"), {QKeySequence(Qt::CTRL | Qt::Key_W), QKeySequence(Qt::CTRL | Qt::Key_F4)}, false, [this] {
         if (KTextEditor::View *view = currentView()) {
             closeView(view);
         }
     });
-    addShortcut(QStringLiteral("Scheda successiva"), {QKeySequence(Qt::CTRL | Qt::Key_Tab), QKeySequence(Qt::CTRL | Qt::Key_PageDown)}, false, [this] {
+    addShortcut(tr("Next Editor"), {QKeySequence(Qt::CTRL | Qt::Key_Tab), QKeySequence(Qt::CTRL | Qt::Key_PageDown)}, false, [this] {
         cycleTab(1);
     });
-    addShortcut(QStringLiteral("Scheda precedente"),
+    addShortcut(tr("Previous Editor"),
                 {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Backtab),
                  QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Tab),
                  QKeySequence(Qt::CTRL | Qt::Key_PageUp)},
@@ -789,7 +811,7 @@ void MainWindow::buildActions()
                 [this] {
                     cycleTab(-1);
                 });
-    QAction *formatAction = addShortcut(QStringLiteral("Formatta documento"),
+    QAction *formatAction = addShortcut(tr("Format Document"),
                                         {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I), QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_F)},
                                         false,
                                         [this] {
@@ -797,26 +819,28 @@ void MainWindow::buildActions()
                                                 formatDocument(view->document(), false);
                                             }
                                         });
-    QAction *saveRaw = addShortcut(QStringLiteral("Salva senza formattare"), {QKeySequence(QStringLiteral("Ctrl+K, Ctrl+Shift+S"))}, false, [this] {
+    QAction *saveRaw = addShortcut(tr("Save without Formatting"), {QKeySequence(QStringLiteral("Ctrl+K, Ctrl+Shift+S"))}, false, [this] {
         if (KTextEditor::View *view = currentView()) {
             m_saveWithoutFormat = view->document();
             view->document()->documentSave();
             m_saveWithoutFormat = nullptr;
         }
     });
-    QAction *closeProjectAction = addShortcut(QStringLiteral("Chiudi progetto"), {QKeySequence(QStringLiteral("Ctrl+K, F"))}, false, [this] {
+    QAction *closeProjectAction = addShortcut(tr("Close Project"), {QKeySequence(QStringLiteral("Ctrl+K, F"))}, false, [this] {
         closeProject();
     });
-    QAction *closeWindow = addShortcut(QStringLiteral("Chiudi finestra"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_W)}, false, [this] {
+    QAction *closeWindow = addShortcut(tr("Close Window"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_W)}, false, [this] {
         close();
     });
-    QAction *settingsAction = addShortcut(QStringLiteral("Impostazioni"), {QKeySequence(Qt::CTRL | Qt::Key_Comma)}, false, [this] {
+    QAction *settingsAction = addShortcut(tr("Settings"), {QKeySequence(Qt::CTRL | Qt::Key_Comma)}, false, [this] {
         openSettings();
     });
-    QAction *quitAction = addShortcut(QStringLiteral("Esci"), {QKeySequence(Qt::CTRL | Qt::Key_Q)}, false, [] {
+    QAction *quitAction = addShortcut(tr("Exit"), {QKeySequence(Qt::CTRL | Qt::Key_Q)}, false, [] {
         WindowManager::instance().closeAll();
     });
 
+    quickOpenAction->setObjectName(QStringLiteral("actionQuickOpen"));
+    sourceControlAction->setObjectName(QStringLiteral("actionSourceControl"));
     projects->setIcon(QIcon::fromTheme(QStringLiteral("view-list-details")));
     openFolderAction->setIcon(QIcon::fromTheme(QStringLiteral("folder-open")));
     newWindow->setIcon(QIcon::fromTheme(QStringLiteral("window-new")));
@@ -1099,7 +1123,11 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc)
     connect(doc, &KTextEditor::Document::highlightingModeChanged, this, &MainWindow::updateStatusBar);
     connect(doc, &KTextEditor::Document::configChanged, this, &MainWindow::updateStatusBar);
     connect(doc, &KTextEditor::Document::documentSavedOrUploaded, this, &MainWindow::updateStatusBar);
-    connect(doc, &KTextEditor::Document::textChanged, &m_blameTimer, qOverload<>(&QTimer::start));
+    connect(doc, &KTextEditor::Document::documentSavedOrUploaded, this, [this](KTextEditor::Document *d) {
+        if (DocumentBlame *blame = m_blames.value(d)) {
+            blame->refresh(); // Prettier may have rewritten it; edited lines may match git again
+        }
+    });
     connect(doc, &KTextEditor::Document::modifiedChanged, this, [this](KTextEditor::Document *d) {
         const QString path = localPath(d);
         if (d->isModified() && !path.isEmpty()) {
@@ -1131,7 +1159,7 @@ void MainWindow::configureView(KTextEditor::View *view)
         }
         if (view == currentView()) {
             updateCursorStatus();
-            m_blameTimer.start();
+            showBlame();
         }
     });
     connect(view, &KTextEditor::View::selectionChanged, this, [this, view] {
@@ -1259,7 +1287,7 @@ void MainWindow::saveAll()
 
 void MainWindow::openFileDialog()
 {
-    const QStringList files = QFileDialog::getOpenFileNames(this, QStringLiteral("Apri file"), m_root.isEmpty() ? QDir::homePath() : m_root);
+    const QStringList files = QFileDialog::getOpenFileNames(this, tr("Open File"), m_root.isEmpty() ? QDir::homePath() : m_root);
     for (const QString &file : files) {
         openFile(file);
     }
@@ -1297,7 +1325,7 @@ void MainWindow::onCurrentTabChanged()
 {
     updateWindowTitle();
     updateStatusBar();
-    m_blameTimer.start();
+    showBlame();
     KTextEditor::View *view = currentView();
     if (!view) {
         updateEditorPage();
@@ -1355,7 +1383,7 @@ void MainWindow::updateWindowTitle()
         parts << QFileInfo(m_root).fileName();
     }
     setWindowTitle(parts.join(QStringLiteral(" — ")));
-    m_titleBar->setSearchText(m_root.isEmpty() ? QStringLiteral("Scegli un progetto") : QFileInfo(m_root).fileName());
+    m_titleBar->setSearchText(m_root.isEmpty() ? tr("Choose a project") : QFileInfo(m_root).fileName());
 }
 
 void MainWindow::showTabMenu(const QPoint &pos)
@@ -1367,34 +1395,34 @@ void MainWindow::showTabMenu(const QPoint &pos)
     }
     const QString path = localPath(view->document());
     QMenu menu(this);
-    menu.addAction(QIcon::fromTheme(QStringLiteral("tab-close")), QStringLiteral("Chiudi"), this, [this, view] {
+    menu.addAction(QIcon::fromTheme(QStringLiteral("tab-close")), tr("Close"), this, [this, view] {
         closeView(view);
     });
-    menu.addAction(QStringLiteral("Chiudi le altre"), this, [this, view] {
+    menu.addAction(tr("Close Others"), this, [this, view] {
         closeTabsWhere([this, view](int i) {
             return viewAt(i) != view;
         });
     });
-    menu.addAction(QStringLiteral("Chiudi quelle a destra"), this, [this, view] {
+    menu.addAction(tr("Close to the Right"), this, [this, view] {
         const int at = m_tabs->indexOf(view);
         closeTabsWhere([at](int i) {
             return i > at;
         });
     });
-    menu.addAction(QStringLiteral("Chiudi tutte"), this, [this] {
+    menu.addAction(tr("Close All"), this, [this] {
         closeAllViews();
     });
     if (!path.isEmpty()) {
         menu.addSeparator();
-        menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), QStringLiteral("Copia percorso"), this, [path] {
+        menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), tr("Copy Path"), this, [path] {
             QApplication::clipboard()->setText(path);
         });
         if (!m_root.isEmpty()) {
-            menu.addAction(QStringLiteral("Copia percorso relativo"), this, [this, path] {
+            menu.addAction(tr("Copy Relative Path"), this, [this, path] {
                 QApplication::clipboard()->setText(QDir(m_root).relativeFilePath(path));
             });
         }
-        menu.addAction(QIcon::fromTheme(QStringLiteral("folder-open")), QStringLiteral("Mostra in Esplora risorse"), this, [this, path] {
+        menu.addAction(QIcon::fromTheme(QStringLiteral("folder-open")), tr("Reveal in Explorer View"), this, [this, path] {
             showSidePage(ExplorerPage, false);
             m_explorer->reveal(path);
         });
@@ -1446,19 +1474,19 @@ void MainWindow::updateGitStatus()
     }
     QString branch = m_git->branch();
     if (branch == QLatin1String("(detached)")) {
-        branch = QStringLiteral("HEAD staccato");
+        branch = tr("Detached HEAD");
     }
-    m_status->setItem(QStringLiteral("branch"), branch, m_gitIcon, QStringLiteral("Branch %1 — clic: controllo del codice sorgente").arg(branch));
+    m_status->setItem(QStringLiteral("branch"), branch, m_gitIcon, tr("Branch %1 — click to open Source Control").arg(branch));
     if (!m_git->upstream().isEmpty()) {
         m_status->setItem(QStringLiteral("sync"),
                           QStringLiteral("↓%1 ↑%2").arg(m_git->behind()).arg(m_git->ahead()),
                           QIcon::fromTheme(QStringLiteral("view-refresh")),
-                          QStringLiteral("Sincronizza con %1 (pull e push)").arg(m_git->upstream()));
+                          tr("Synchronize with %1 (pull and push)").arg(m_git->upstream()));
     } else if (!m_git->unborn()) {
         m_status->setItem(QStringLiteral("sync"),
-                          QStringLiteral("Pubblica"),
+                          tr("Publish"),
                           QIcon::fromTheme(QStringLiteral("cloud-upload"), QIcon::fromTheme(QStringLiteral("go-up"))),
-                          QStringLiteral("Pubblica il branch sul server"));
+                          tr("Publish the branch to the server"));
     } else {
         m_status->setItem(QStringLiteral("sync"), QString());
     }
@@ -1471,11 +1499,10 @@ void MainWindow::updateCursorStatus()
         return;
     }
     const KTextEditor::Cursor c = view->cursorPositionVirtual();
-    QString text = QStringLiteral("Riga %1, colonna %2").arg(c.line() + 1).arg(c.column() + 1);
-    if (view->selection()) {
-        text += QStringLiteral(" (%1 selezionati)").arg(view->selectionText().size());
-    }
-    m_status->setItem(QStringLiteral("cursor"), text, QIcon(), QStringLiteral("Vai alla riga (Ctrl+G)"));
+    const QString text = view->selection()
+        ? tr("Ln %1, Col %2 (%3 selected)").arg(c.line() + 1).arg(c.column() + 1).arg(view->selectionText().size())
+        : tr("Ln %1, Col %2").arg(c.line() + 1).arg(c.column() + 1);
+    m_status->setItem(QStringLiteral("cursor"), text, QIcon(), tr("Go to Line (Ctrl+G)"));
 }
 
 void MainWindow::updateStatusBar()
@@ -1492,25 +1519,25 @@ void MainWindow::updateStatusBar()
     updateCursorStatus();
     const bool spaces = doc->configValue(QStringLiteral("replace-tabs")).toBool();
     m_status->setItem(QStringLiteral("indent"),
-                      spaces ? QStringLiteral("Spazi: %1").arg(doc->configValue(QStringLiteral("indent-width")).toInt())
-                             : QStringLiteral("Tab: %1").arg(doc->configValue(QStringLiteral("tab-width")).toInt()),
+                      spaces ? tr("Spaces: %1").arg(doc->configValue(QStringLiteral("indent-width")).toInt())
+                             : tr("Tab Size: %1").arg(doc->configValue(QStringLiteral("tab-width")).toInt()),
                       QIcon(),
-                      QStringLiteral("Rientro — clic per cambiarlo"));
-    m_status->setItem(QStringLiteral("encoding"), doc->encoding().toUpper(), QIcon(), QStringLiteral("Codifica — clic per cambiarla"));
+                      tr("Indentation — click to change"));
+    m_status->setItem(QStringLiteral("encoding"), doc->encoding().toUpper(), QIcon(), tr("Encoding — click to change"));
     QString eol = QStringLiteral("LF");
     if (auto *action = qobject_cast<KSelectAction *>(view->actionCollection()->action(QStringLiteral("set_eol")))) {
         const int i = action->currentItem();
         eol = i == 1 ? QStringLiteral("CRLF") : i == 2 ? QStringLiteral("CR") : QStringLiteral("LF");
     }
-    m_status->setItem(QStringLiteral("eol"), eol, QIcon(), QStringLiteral("Fine riga — clic per cambiarlo"));
-    m_status->setItem(QStringLiteral("mode"), doc->highlightingMode(), QIcon(), QStringLiteral("Linguaggio — clic per cambiarlo"));
+    m_status->setItem(QStringLiteral("eol"), eol, QIcon(), tr("End of line sequence — click to change"));
+    m_status->setItem(QStringLiteral("mode"), doc->highlightingMode(), QIcon(), tr("Language mode — click to change"));
     const QString path = localPath(doc);
     if (!path.isEmpty() && Formatter::instance().available(path)) {
         const bool onSave = Formatter::instance().formatOnSave(projectFor(path));
         m_status->setItem(QStringLiteral("prettier"),
                           onSave ? QStringLiteral("✓ Prettier") : QStringLiteral("Prettier"),
                           QIcon(),
-                          onSave ? QStringLiteral("Prettier formatta al salvataggio — clic: formatta ora") : QStringLiteral("Prettier — clic: formatta ora"));
+                          onSave ? tr("Prettier formats on save — click to format now") : tr("Prettier — click to format now"));
     } else {
         m_status->setItem(QStringLiteral("prettier"), QString());
     }
@@ -1519,109 +1546,81 @@ void MainWindow::updateStatusBar()
     }
 }
 
-// Who last changed the current line, like GitLens: git blame on the text in
-// the editor (so unsaved edits are taken into account).
-void MainWindow::runBlame()
+// Who last changed the current line, like GitLens. The answer comes from the
+// document's blame, computed once in the background (see DocumentBlame).
+DocumentBlame *MainWindow::blameFor(KTextEditor::Document *doc)
+{
+    const QString root = m_git->root();
+    const QString path = localPath(doc);
+    if (root.isEmpty() || path.isEmpty() || !path.startsWith(root + QLatin1Char('/'))) {
+        return nullptr;
+    }
+    DocumentBlame *blame = m_blames.value(doc);
+    if (!blame) {
+        if (!m_gitEmails.contains(root)) {
+            QProcess config;
+            config.setWorkingDirectory(root);
+            config.start(QStringLiteral("git"), {QStringLiteral("config"), QStringLiteral("user.email")});
+            config.waitForFinished(2000);
+            m_gitEmails.insert(root, QString::fromUtf8(config.readAllStandardOutput()).trimmed());
+        }
+        blame = new DocumentBlame(doc, root, doc); // goes away with the document
+        m_blames.insert(doc, blame);
+        connect(blame, &QObject::destroyed, this, [this, doc] {
+            m_blames.remove(doc);
+            m_staleBlames.remove(doc);
+        });
+        connect(blame, &DocumentBlame::updated, this, [this, doc] {
+            if (KTextEditor::View *view = currentView(); view && view->document() == doc) {
+                showBlame();
+            }
+        });
+        blame->refresh();
+    } else if (m_staleBlames.remove(doc)) {
+        blame->refresh();
+    }
+    return blame;
+}
+
+void MainWindow::showBlame()
 {
     KTextEditor::View *view = currentView();
-    const QString path = view ? localPath(view->document()) : QString();
-    const QString root = m_git->root();
-    if (path.isEmpty() || root.isEmpty() || !path.startsWith(root + QLatin1Char('/'))) {
+    auto *notes = view ? static_cast<BlameNotes *>(m_blameNotes.value(view)) : nullptr;
+    DocumentBlame *blame = view ? blameFor(view->document()) : nullptr;
+    const int line = view ? view->cursorPosition().line() : -1;
+    const int entry = blame ? blame->entry(line) : DocumentBlame::Unknown;
+    if (entry == DocumentBlame::Unknown) {
+        if (notes) {
+            notes->set(-1, QString());
+        }
         m_status->setItem(QStringLiteral("blame"), QString());
-        m_blameKey.clear();
         return;
     }
-    const int line = view->cursorPosition().line() + 1;
-    const QString key = QStringLiteral("%1:%2:%3").arg(path).arg(line).arg(view->document()->revision());
-    if (key == m_blameKey) {
-        return;
-    }
-    m_blameKey = key;
-    if (m_blameProc) {
-        m_blameProc->disconnect(this);
-        m_blameProc->kill();
-        m_blameProc->deleteLater();
-        m_blameProc = nullptr;
-    }
-    if (!m_gitEmails.contains(root)) {
-        QProcess config;
-        config.setWorkingDirectory(root);
-        config.start(QStringLiteral("git"), {QStringLiteral("config"), QStringLiteral("user.email")});
-        config.waitForFinished(2000);
-        m_gitEmails.insert(root, QString::fromUtf8(config.readAllStandardOutput()).trimmed());
-    }
-    auto *proc = new QProcess(this);
-    m_blameProc = proc;
-    proc->setWorkingDirectory(root);
-    const QPointer<KTextEditor::View> blamedView(view);
-    const int blamedLine = line - 1;
-    const auto showInline = [this, blamedView, blamedLine](const QString &text) {
-        if (blamedView && blamedView->cursorPosition().line() == blamedLine) {
-            if (auto *notes = static_cast<BlameNotes *>(m_blameNotes.value(blamedView.data()))) {
-                notes->set(blamedLine, text);
-            }
+    if (entry == DocumentBlame::Uncommitted) {
+        if (notes) {
+            notes->set(line, tr("You, now • Uncommitted changes"));
         }
-    };
-    connect(proc, &QProcess::finished, this, [this, proc, root, showInline](int code) {
-        const QString out = QString::fromUtf8(proc->readAllStandardOutput());
-        proc->deleteLater();
-        if (m_blameProc != proc) {
-            return;
-        }
-        m_blameProc = nullptr;
-        const QStringList lines = out.split(QLatin1Char('\n'));
-        const QString hash = lines.value(0).section(QLatin1Char(' '), 0, 0);
-        if (code != 0 || hash.isEmpty()) {
-            m_status->setItem(QStringLiteral("blame"), QString());
-            return;
-        }
-        if (hash.count(QLatin1Char('0')) == hash.size()) {
-            showInline(QStringLiteral("Tu, adesso • Modifiche non ancora committate"));
-            m_status->setItem(QStringLiteral("blame"),
-                              QStringLiteral("Non ancora committato"),
-                              QIcon::fromTheme(QStringLiteral("vcs-commit")),
-                              QStringLiteral("Questa riga contiene modifiche non ancora committate"));
-            return;
-        }
-        QString author;
-        QString mail;
-        QString summary;
-        qint64 time = 0;
-        for (const QString &l : lines) {
-            if (l.startsWith(QLatin1String("author "))) {
-                author = l.mid(7);
-            } else if (l.startsWith(QLatin1String("author-mail "))) {
-                mail = l.mid(12);
-                mail.remove(QLatin1Char('<')).remove(QLatin1Char('>'));
-            } else if (l.startsWith(QLatin1String("author-time "))) {
-                time = l.mid(12).toLongLong();
-            } else if (l.startsWith(QLatin1String("summary "))) {
-                summary = l.mid(8);
-            }
-        }
-        const QString who = (!mail.isEmpty() && mail.compare(m_gitEmails.value(root), Qt::CaseInsensitive) == 0) ? QStringLiteral("Tu") : author;
-        QString headline = summary;
-        if (headline.size() > 72) {
-            headline = headline.left(71) + QStringLiteral("…");
-        }
-        showInline(QStringLiteral("%1, %2 • %3").arg(who, relativeAge(time), headline));
         m_status->setItem(QStringLiteral("blame"),
-                          QStringLiteral("%1, %2").arg(who, relativeAge(time)),
+                          tr("Not committed yet"),
                           QIcon::fromTheme(QStringLiteral("vcs-commit")),
-                          QStringLiteral("%1\n%2 · %3 · %4")
-                              .arg(summary, hash.left(8), author, QLocale().toString(QDateTime::fromSecsSinceEpoch(time), QLocale::ShortFormat)));
-    });
-    proc->start(QStringLiteral("git"),
-                {QStringLiteral("blame"),
-                 QStringLiteral("--porcelain"),
-                 QStringLiteral("-L"),
-                 QStringLiteral("%1,%1").arg(line),
-                 QStringLiteral("--contents"),
-                 QStringLiteral("-"),
-                 QStringLiteral("--"),
-                 QDir(root).relativeFilePath(path)});
-    proc->write(view->document()->text().toUtf8());
-    proc->closeWriteChannel();
+                          tr("This line has uncommitted changes"));
+        return;
+    }
+    const DocumentBlame::Commit &c = blame->commit(entry);
+    const bool mine = !c.mail.isEmpty() && c.mail.compare(m_gitEmails.value(m_git->root()), Qt::CaseInsensitive) == 0;
+    const QString who = mine ? tr("You") : c.author;
+    QString headline = c.summary;
+    if (headline.size() > 72) {
+        headline = headline.left(71) + QStringLiteral("…");
+    }
+    if (notes) {
+        notes->set(line, QStringLiteral("%1, %2 • %3").arg(who, relativeAge(c.time), headline));
+    }
+    m_status->setItem(QStringLiteral("blame"),
+                      QStringLiteral("%1, %2").arg(who, relativeAge(c.time)),
+                      QIcon::fromTheme(QStringLiteral("vcs-commit")),
+                      QStringLiteral("%1\n%2 · %3 · %4")
+                          .arg(c.summary, c.hash.left(8), c.author, QLocale().toString(QDateTime::fromSecsSinceEpoch(c.time), QLocale::ShortFormat)));
 }
 
 void MainWindow::updateUpdaterStatus()
@@ -1633,21 +1632,21 @@ void MainWindow::updateUpdaterStatus()
         break;
     case Updater::State::Available:
         m_status->setItem(QStringLiteral("update"),
-                          QStringLiteral("⬆ Aggiornamento %1").arg(u.latestVersion()),
+                          tr("⬆ Update %1").arg(u.latestVersion()),
                           QIcon(),
-                          QStringLiteral("È disponibile Lieve %1 (in uso: %2)").arg(u.latestVersion(), QStringLiteral(LIEVE_VERSION)));
+                          tr("Lieve %1 is available (current: %2)").arg(u.latestVersion(), QStringLiteral(LIEVE_VERSION)));
         break;
     case Updater::State::Updating:
-        m_status->setItem(QStringLiteral("update"), QStringLiteral("Aggiornamento in corso…"), QIcon(), QStringLiteral("Scarico, compilo e installo Lieve %1").arg(u.latestVersion()));
+        m_status->setItem(QStringLiteral("update"), tr("Updating…"), QIcon(), tr("Downloading, building and installing Lieve %1").arg(u.latestVersion()));
         break;
     case Updater::State::Updated:
         m_status->setItem(QStringLiteral("update"),
-                          QStringLiteral("↻ Riavvia per usare la %1").arg(u.latestVersion()),
+                          tr("↻ Restart to use %1").arg(u.latestVersion()),
                           QIcon(),
-                          QStringLiteral("Lieve %1 è installato: clic per riavviare").arg(u.latestVersion()));
+                          tr("Lieve %1 is installed: click to restart").arg(u.latestVersion()));
         break;
     case Updater::State::Failed:
-        m_status->setItem(QStringLiteral("update"), QStringLiteral("Aggiornamento non riuscito"), QIcon(), QStringLiteral("Clic per i dettagli"));
+        m_status->setItem(QStringLiteral("update"), tr("Update failed"), QIcon(), tr("Click for details"));
         break;
     }
 }
@@ -1661,22 +1660,22 @@ void MainWindow::showUpdateDialog()
     }
     QMessageBox box(this);
     box.setIcon(u.state() == Updater::State::Failed ? QMessageBox::Warning : QMessageBox::Information);
-    box.setWindowTitle(QStringLiteral("Aggiornamento di Lieve"));
+    box.setWindowTitle(tr("Lieve Update"));
     if (u.state() == Updater::State::Failed) {
-        box.setText(QStringLiteral("L'aggiornamento a Lieve %1 non è riuscito.").arg(u.latestVersion()));
-        box.setInformativeText(QStringLiteral("La versione in uso non è stata toccata. I dettagli della compilazione sono qui sotto."));
+        box.setText(tr("The update to Lieve %1 failed.").arg(u.latestVersion()));
+        box.setInformativeText(tr("The current version was left untouched. The build details are below."));
         box.setDetailedText(u.log().right(6000));
     } else {
-        box.setText(QStringLiteral("È disponibile Lieve %1 (in uso: %2).").arg(u.latestVersion(), QStringLiteral(LIEVE_VERSION)));
+        box.setText(tr("Lieve %1 is available (current: %2).").arg(u.latestVersion(), QStringLiteral(LIEVE_VERSION)));
         box.setTextFormat(Qt::PlainText);
-        box.setInformativeText(u.notes().isEmpty() ? QStringLiteral("Nessuna nota di rilascio.") : u.notes().left(1500));
+        box.setInformativeText(u.notes().isEmpty() ? tr("No release notes.") : u.notes().left(1500));
     }
     QPushButton *updateNow = nullptr;
     if (u.canSelfUpdate()) {
-        updateNow = box.addButton(u.state() == Updater::State::Failed ? QStringLiteral("Riprova") : QStringLiteral("Aggiorna ora"), QMessageBox::AcceptRole);
+        updateNow = box.addButton(u.state() == Updater::State::Failed ? tr("Retry") : tr("Update Now"), QMessageBox::AcceptRole);
     }
-    QPushButton *page = box.addButton(QStringLiteral("Apri la pagina della release"), QMessageBox::HelpRole);
-    box.addButton(QStringLiteral("Più tardi"), QMessageBox::RejectRole);
+    QPushButton *page = box.addButton(tr("Open Release Page"), QMessageBox::HelpRole);
+    box.addButton(tr("Later"), QMessageBox::RejectRole);
     box.exec();
     if (updateNow && box.clickedButton() == updateNow) {
         u.update();
@@ -1724,10 +1723,10 @@ void MainWindow::onStatusClicked(const QString &name)
         const bool spaces = doc->configValue(QStringLiteral("replace-tabs")).toBool();
         const int width = doc->configValue(QStringLiteral("indent-width")).toInt();
         QMenu menu(this);
-        QAction *withSpaces = menu.addAction(QStringLiteral("Rientra con spazi"), this, [doc] {
+        QAction *withSpaces = menu.addAction(tr("Indent Using Spaces"), this, [doc] {
             doc->setConfigValue(QStringLiteral("replace-tabs"), true);
         });
-        QAction *withTabs = menu.addAction(QStringLiteral("Rientra con tabulazioni"), this, [doc] {
+        QAction *withTabs = menu.addAction(tr("Indent Using Tabs"), this, [doc] {
             doc->setConfigValue(QStringLiteral("replace-tabs"), false);
         });
         withSpaces->setCheckable(true);
@@ -1736,7 +1735,7 @@ void MainWindow::onStatusClicked(const QString &name)
         withTabs->setChecked(!spaces);
         menu.addSeparator();
         for (const int w : {2, 4, 8}) {
-            QAction *a = menu.addAction(QStringLiteral("Larghezza %1").arg(w), this, [doc, w] {
+            QAction *a = menu.addAction(tr("Width %1").arg(w), this, [doc, w] {
                 doc->setConfigValue(QStringLiteral("indent-width"), w);
                 doc->setConfigValue(QStringLiteral("tab-width"), w);
             });
@@ -1772,24 +1771,25 @@ void MainWindow::updateGitBadge()
 {
     const int count = m_git->isRepository() ? int(m_git->entries().size()) : 0;
     m_actGit->setIcon(Theme::activityIcon(m_gitIcon, count));
-    m_actGit->setToolTip(count > 0 ? QStringLiteral("Controllo del codice sorgente (Ctrl+Shift+G) — %1 modifiche").arg(count)
-                                   : QStringLiteral("Controllo del codice sorgente (Ctrl+Shift+G)"));
+    m_actGit->setToolTip(count <= 0       ? tr("Source Control (Ctrl+Shift+G)")
+                             : count == 1 ? tr("Source Control (Ctrl+Shift+G) — 1 change")
+                                          : tr("Source Control (Ctrl+Shift+G) — %1 changes").arg(count));
 }
 
 // A read-only tab with the unified diff, added/removed lines coloured.
 void MainWindow::showDiff(const Lieve::GitEntry &entry, const QString &text)
 {
     const QString name = QFileInfo(entry.path).fileName();
-    QString suffix = QStringLiteral("modifiche");
+    QString title = tr("%1 (Changes)").arg(name);
     if (entry.group == Lieve::GitEntry::Staged) {
-        suffix = QStringLiteral("preparate");
+        title = tr("%1 (Staged)").arg(name);
     } else if (entry.group == Lieve::GitEntry::Conflicts) {
-        suffix = QStringLiteral("conflitto");
+        title = tr("%1 (Conflict)").arg(name);
     } else if (entry.status == QLatin1Char('U')) {
-        suffix = QStringLiteral("nuovo file");
+        title = tr("%1 (Untracked)").arg(name);
     }
     const QString key = QString::number(int(entry.group)) + QLatin1Char(':') + entry.path;
-    const QString body = text.isEmpty() ? QStringLiteral("Nessuna differenza di testo (file binario, oppure cambiano solo i permessi).\n") : text;
+    const QString body = text.isEmpty() ? tr("No text differences (binary file, or only the permissions changed).\n") : text;
 
     KTextEditor::View *view = nullptr;
     for (int i = 0; i < m_tabs->count(); ++i) {
@@ -1807,7 +1807,7 @@ void MainWindow::showDiff(const Lieve::GitEntry &entry, const QString &text)
     } else {
         doc = KTextEditor::Editor::instance()->createDocument(this);
         doc->setProperty("lieveDiffKey", key);
-        doc->setProperty("lieveTitle", QStringLiteral("%1 (%2)").arg(name, suffix));
+        doc->setProperty("lieveTitle", title);
         doc->setProperty("lieveIconName", name);
         doc->setText(body);
         view = addView(doc);
@@ -1883,9 +1883,41 @@ void MainWindow::colorDiff(KTextEditor::Document *doc)
     m_diffRanges.insert(doc, ranges);
 }
 
+void MainWindow::paintEvent(QPaintEvent *event)
+{
+    if (!Theme::styled()) {
+        QMainWindow::paintEvent(event);
+        return;
+    }
+    const Colors &c = Theme::colors();
+    QPainter p(this);
+    const bool rounded = testAttribute(Qt::WA_TranslucentBackground) && !isMaximized() && !isFullScreen();
+    if (!rounded) {
+        p.fillRect(rect(), c.base);
+        return;
+    }
+    // Same radius as the cards inside, and a thin outline like Breeze windows.
+    constexpr qreal radius = 10;
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setCompositionMode(QPainter::CompositionMode_Source);
+    p.fillRect(rect(), Qt::transparent);
+    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    p.setPen(Qt::NoPen);
+    p.setBrush(c.base);
+    p.drawRoundedRect(QRectF(rect()), radius, radius);
+    QColor outline = c.fg;
+    outline.setAlphaF(c.dark ? 0.16f : 0.22f);
+    p.setPen(QPen(outline, 1));
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), radius - 0.5, radius - 0.5);
+}
+
 void MainWindow::changeEvent(QEvent *event)
 {
     QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange) {
+        update(); // square corners when maximised
+    }
     if (event->type() == QEvent::ActivationChange && isActiveWindow() && m_git) {
         m_git->scheduleRefresh(); // back from another program: files may have changed
     }
@@ -1911,7 +1943,7 @@ void MainWindow::formatDocument(KTextEditor::Document *doc, bool onSave)
         return;
     }
     if (!onSave && !formatter.available(path)) {
-        showMessage(doc, QStringLiteral("Prettier non è installato in questo progetto (node_modules/prettier)."), KTextEditor::Message::Information);
+        showMessage(doc, tr("Prettier is not installed in this project (node_modules/prettier)."), KTextEditor::Message::Information);
         return;
     }
     KTextEditor::View *view = (currentView() && currentView()->document() == doc) ? currentView() : doc->views().value(0);
@@ -1927,10 +1959,11 @@ void MainWindow::formatDocument(KTextEditor::Document *doc, bool onSave)
         break;
     case FormatResult::Skipped:
         if (!onSave) {
-            const QString why = result.message == QLatin1String("ignored") ? QStringLiteral("il file è escluso da .prettierignore")
-                : result.message == QLatin1String("no-config")             ? QStringLiteral("manca una configurazione Prettier (prettier.requireConfig)")
-                                                                           : QStringLiteral("Prettier non supporta questo tipo di file");
-            showMessage(doc, QStringLiteral("Nessuna formattazione: %1.").arg(why), KTextEditor::Message::Information);
+            const QString why = result.message == QLatin1String("ignored")
+                ? tr("Not formatted: the file is excluded by .prettierignore.")
+                : result.message == QLatin1String("no-config") ? tr("Not formatted: no Prettier configuration found (prettier.requireConfig).")
+                                                               : tr("Not formatted: Prettier does not support this file type.");
+            showMessage(doc, why, KTextEditor::Message::Information);
         }
         break;
     case FormatResult::Unchanged:

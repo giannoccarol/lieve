@@ -40,8 +40,9 @@ QString editorThemeName();
 // True when Lieve's own palette and stylesheet are in use ([ui] theme=editor):
 // selections are then a soft tint and keep the normal text colour.
 bool styled();
-// Konsole profile with the same colours ("" if not available).
-QString konsoleProfile();
+// Lieve's private Konsole profile that runs `shell`, with the editor's colours
+// unless [terminal] matchEditor=false ("" if it could not be written).
+QString konsoleProfile(const QString &shell);
 // Activity bar icon: dimmed when off, full when checked or hovered, with an
 // optional counter badge.
 QIcon activityIcon(const QIcon &base, int badge = 0);
@@ -53,6 +54,7 @@ enum class Glyph {
     TabClose, // the × on tabs
     Sidebar, // layout toggles: the pane fills in when shown
     Panel,
+    ChevronDown, // menu next to a button (new terminal)
 };
 // Thin line icons for the title bar, in the theme's colours (hover variant included).
 QIcon glyph(Glyph kind);

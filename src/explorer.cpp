@@ -138,7 +138,7 @@ Explorer::Explorer(QWidget *parent)
     auto *hl = new QHBoxLayout(header);
     hl->setContentsMargins(12, 4, 4, 4);
     hl->setSpacing(4);
-    m_title = new QLabel(QStringLiteral("ESPLORA RISORSE"), header);
+    m_title = new QLabel(tr("EXPLORER"), header);
     m_title->setObjectName(QStringLiteral("sideTitle"));
     QFont titleFont = m_title->font();
     titleFont.setBold(true);
@@ -166,9 +166,9 @@ Explorer::Explorer(QWidget *parent)
     auto *al = new QHBoxLayout(m_headerActions);
     al->setContentsMargins(0, 0, 0, 0);
     al->setSpacing(0);
-    auto *newFile = headerButton(QStringLiteral("document-new"), QStringLiteral("list-add"), QStringLiteral("Nuovo file…"), m_headerActions);
-    auto *newFolder = headerButton(QStringLiteral("folder-new"), QStringLiteral("folder"), QStringLiteral("Nuova cartella…"), m_headerActions);
-    auto *collapse = headerButton(QStringLiteral("collapse-all"), QStringLiteral("go-up"), QStringLiteral("Comprimi tutto"), m_headerActions);
+    auto *newFile = headerButton(QStringLiteral("document-new"), QStringLiteral("list-add"), tr("New File…"), m_headerActions);
+    auto *newFolder = headerButton(QStringLiteral("folder-new"), QStringLiteral("folder"), tr("New Folder…"), m_headerActions);
+    auto *collapse = headerButton(QStringLiteral("collapse-all"), QStringLiteral("go-up"), tr("Collapse All"), m_headerActions);
     connect(newFile, &QToolButton::clicked, this, [this] {
         createEntry(false);
     });
@@ -191,9 +191,9 @@ Explorer::Explorer(QWidget *parent)
     auto *empty = new QWidget(m_stack);
     auto *el = new QVBoxLayout(empty);
     el->setContentsMargins(16, 16, 16, 16);
-    auto *emptyLabel = new QLabel(QStringLiteral("Nessuna cartella aperta."), empty);
+    auto *emptyLabel = new QLabel(tr("No folder open."), empty);
     emptyLabel->setWordWrap(true);
-    auto *openButton = new QPushButton(QStringLiteral("Apri cartella…"), empty);
+    auto *openButton = new QPushButton(tr("Open Folder…"), empty);
     openButton->setObjectName(QStringLiteral("primaryButton"));
     connect(openButton, &QPushButton::clicked, this, &Explorer::openFolderRequested);
     el->addWidget(emptyLabel);
@@ -272,7 +272,7 @@ void Explorer::setRoot(const QString &dir)
     m_pendingReveal.clear();
     m_proxy->clearExpanded();
     if (dir.isEmpty()) {
-        m_title->setText(QStringLiteral("ESPLORA RISORSE"));
+        m_title->setText(tr("EXPLORER"));
         m_stack->setCurrentIndex(0);
         return;
     }
@@ -383,37 +383,37 @@ void Explorer::showMenu(const QPoint &pos)
     }
 
     QMenu menu(this);
-    menu.addAction(QIcon::fromTheme(QStringLiteral("document-new")), QStringLiteral("Nuovo file…"), this, [this] {
+    menu.addAction(QIcon::fromTheme(QStringLiteral("document-new")), tr("New File…"), this, [this] {
         createEntry(false);
     });
-    menu.addAction(QIcon::fromTheme(QStringLiteral("folder-new")), QStringLiteral("Nuova cartella…"), this, [this] {
+    menu.addAction(QIcon::fromTheme(QStringLiteral("folder-new")), tr("New Folder…"), this, [this] {
         createEntry(true);
     });
     if (idx.isValid()) {
         const QString path = currentPath();
         menu.addSeparator();
-        QAction *rename = menu.addAction(QIcon::fromTheme(QStringLiteral("edit-rename")), QStringLiteral("Rinomina"), this, [this, idx] {
+        QAction *rename = menu.addAction(QIcon::fromTheme(QStringLiteral("edit-rename")), tr("Rename…"), this, [this, idx] {
             m_tree->edit(idx);
         });
         rename->setShortcut(Qt::Key_F2);
-        QAction *trash = menu.addAction(QIcon::fromTheme(QStringLiteral("user-trash")), QStringLiteral("Sposta nel cestino"), this, &Explorer::removeCurrent);
+        QAction *trash = menu.addAction(QIcon::fromTheme(QStringLiteral("user-trash")), tr("Move to Trash"), this, &Explorer::removeCurrent);
         trash->setShortcut(QKeySequence::Delete);
         menu.addSeparator();
         menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy-path"), QIcon::fromTheme(QStringLiteral("edit-copy"))),
-                       QStringLiteral("Copia percorso"),
+                       tr("Copy Path"),
                        this,
                        [path] {
                            QApplication::clipboard()->setText(path);
                        });
-        menu.addAction(QStringLiteral("Copia percorso relativo"), this, [this, path] {
+        menu.addAction(tr("Copy Relative Path"), this, [this, path] {
             QApplication::clipboard()->setText(QDir(m_root).relativeFilePath(path));
         });
     }
     menu.addSeparator();
-    menu.addAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), QStringLiteral("Apri nel terminale integrato"), this, [this] {
+    menu.addAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), tr("Open in Integrated Terminal"), this, [this] {
         Q_EMIT terminalRequested(targetDir());
     });
-    menu.addAction(QIcon::fromTheme(QStringLiteral("system-file-manager")), QStringLiteral("Mostra nel file manager"), this, [this] {
+    menu.addAction(QIcon::fromTheme(QStringLiteral("system-file-manager")), tr("Reveal in File Manager"), this, [this] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(targetDir()));
     });
     menu.exec(m_tree->viewport()->mapToGlobal(pos));
@@ -427,8 +427,8 @@ void Explorer::createEntry(bool folder)
     const QString dir = targetDir();
     bool ok = false;
     const QString name = QInputDialog::getText(this,
-                                               folder ? QStringLiteral("Nuova cartella") : QStringLiteral("Nuovo file"),
-                                               QStringLiteral("Nome (anche con sottocartelle, es. utils/date.ts):"),
+                                               folder ? tr("New Folder") : tr("New File"),
+                                               tr("Name (subfolders allowed, e.g. utils/date.ts):"),
                                                QLineEdit::Normal,
                                                QString(),
                                                &ok)
@@ -438,19 +438,19 @@ void Explorer::createEntry(bool folder)
     }
     const QString path = QDir::cleanPath(dir + QLatin1Char('/') + name);
     if (QFileInfo::exists(path)) {
-        QMessageBox::warning(this, QStringLiteral("Lieve"), QStringLiteral("«%1» esiste già.").arg(name));
+        QMessageBox::warning(this, QStringLiteral("Lieve"), tr("“%1” already exists.").arg(name));
         return;
     }
     if (folder) {
         if (!QDir().mkpath(path)) {
-            QMessageBox::warning(this, QStringLiteral("Lieve"), QStringLiteral("Impossibile creare la cartella:\n%1").arg(path));
+            QMessageBox::warning(this, QStringLiteral("Lieve"), tr("Could not create the folder:\n%1").arg(path));
             return;
         }
     } else {
         QDir().mkpath(QFileInfo(path).absolutePath());
         QFile f(path);
         if (!f.open(QIODevice::WriteOnly)) {
-            QMessageBox::warning(this, QStringLiteral("Lieve"), QStringLiteral("Impossibile creare il file:\n%1").arg(path));
+            QMessageBox::warning(this, QStringLiteral("Lieve"), tr("Could not create the file:\n%1").arg(path));
             return;
         }
         f.close();
@@ -466,7 +466,7 @@ void Explorer::removeCurrent()
         return;
     }
     if (!QFile::moveToTrash(path)) {
-        QMessageBox::warning(this, QStringLiteral("Lieve"), QStringLiteral("Impossibile spostare nel cestino:\n%1").arg(path));
+        QMessageBox::warning(this, QStringLiteral("Lieve"), tr("Could not move to Trash:\n%1").arg(path));
         return;
     }
     Q_EMIT pathRemoved(path);

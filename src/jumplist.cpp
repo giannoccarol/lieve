@@ -1,6 +1,7 @@
 #include "jumplist.h"
 
 #include "projects.h"
+#include "settings.h"
 
 #include <QCoreApplication>
 #include <QFile>
@@ -14,6 +15,13 @@ namespace Lieve::JumpList
 namespace
 {
 constexpr int kMaxProjects = 8;
+
+// Texts of the menu entry. English is the default value; the interface
+// language adds a localized key (Name[it]=…), as in data/lieve.desktop.
+const char *const kGenericName = QT_TRANSLATE_NOOP("JumpList", "Code Editor");
+const char *const kComment = QT_TRANSLATE_NOOP("JumpList", "Lightweight editor with explorer, search and terminal");
+const char *const kChooseProject = QT_TRANSLATE_NOOP("JumpList", "Choose Project…");
+const char *const kOpenFolder = QT_TRANSLATE_NOOP("JumpList", "Open Folder…");
 
 // Quote one argument for the Exec key (Desktop Entry spec): inside double
 // quotes ", `, $ and \ need a backslash, and the value itself escapes \ again.
@@ -36,6 +44,18 @@ QString singleLine(QString text)
 {
     text.replace(QLatin1Char('\n'), QLatin1Char(' '));
     return text;
+}
+
+// "Key=English" plus "Key[language]=translation" when Lieve is translated.
+QString localizedEntry(const char *key, const char *source, const QString &language)
+{
+    const QString english = QString::fromUtf8(source);
+    const QString translated = QCoreApplication::translate("JumpList", source);
+    QString entry = QStringLiteral("%1=%2\n").arg(QLatin1String(key), english);
+    if (translated != english) {
+        entry += QStringLiteral("%1[%2]=%3\n").arg(QLatin1String(key), language, singleLine(translated));
+    }
+    return entry;
 }
 }
 
@@ -94,13 +114,14 @@ void update()
         tryExec = QCoreApplication::applicationFilePath();
     }
 
+    const QString language = uiLanguage();
     QString text;
     text += QStringLiteral(
         "[Desktop Entry]\n"
         "Type=Application\n"
-        "Name=Lieve\n"
-        "GenericName=Editor di codice\n"
-        "Comment=Editor leggero con esplora risorse, ricerca e terminale\n");
+        "Name=Lieve\n");
+    text += localizedEntry("GenericName", kGenericName, language);
+    text += localizedEntry("Comment", kComment, language);
     text += QStringLiteral("Exec=%1 %F\n").arg(exe);
     text += QStringLiteral("TryExec=%1\n").arg(tryExec);
     text += QStringLiteral(
@@ -129,8 +150,10 @@ void update()
         text += QStringLiteral("Icon=%1\n").arg(p.branch.isEmpty() ? QStringLiteral("folder") : QStringLiteral("folder-git"));
         text += QStringLiteral("Exec=%1 %2\n").arg(exe, execArgument(p.path));
     }
-    text += QStringLiteral("\n[Desktop Action choose]\nName=Scegli progetto…\nIcon=view-list-details\nExec=%1 --new-window\n").arg(exe);
-    text += QStringLiteral("\n[Desktop Action open-folder]\nName=Apri cartella…\nIcon=folder-open\nExec=%1 --open-folder\n").arg(exe);
+    text += QStringLiteral("\n[Desktop Action choose]\n") + localizedEntry("Name", kChooseProject, language);
+    text += QStringLiteral("Icon=view-list-details\nExec=%1 --new-window\n").arg(exe);
+    text += QStringLiteral("\n[Desktop Action open-folder]\n") + localizedEntry("Name", kOpenFolder, language);
+    text += QStringLiteral("Icon=folder-open\nExec=%1 --open-folder\n").arg(exe);
 
     const QByteArray data = text.toUtf8();
     if (data == old) {

@@ -8,6 +8,7 @@
 
 class KXMLGUIClient;
 class QKeyEvent;
+class QMenu;
 class TabView;
 namespace KParts
 {
@@ -26,7 +27,8 @@ public:
     // Keys the window keeps even while the terminal has focus (Ctrl+J, Ctrl+P, ...).
     void setReservedShortcuts(const QList<QKeySequence> &keys);
     bool hasTerminals() const;
-    void newTerminal(const QString &dir = QString());
+    // `shell` is a path; empty = the default shell ([terminal] shell=).
+    void newTerminal(const QString &dir = QString(), const QString &shell = QString());
     void focusCurrent();
     void closeAll();
 
@@ -39,6 +41,7 @@ private Q_SLOTS:
 
 private:
     void stripReservedShortcuts(KXMLGUIClient *client);
+    void fillShellMenu(QMenu *menu);
     void closeTerminal(int index);
 
     TabView *m_tabs = nullptr;

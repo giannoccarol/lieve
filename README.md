@@ -8,7 +8,7 @@ It does a few things and does them well: **Explorer**, **Search in files**, **Qu
 **Prettier on save** and a **Git panel**, as in VS Code.
 File icons and the main keyboard shortcuts are the ones from VS Code.
 
-*Lieve* is Italian for "light". The interface is currently in Italian.
+*Lieve* is Italian for "light". The interface is in English and Italian and follows the system language.
 
 How heavy it is, measured with the same medium-sized Angular project open in both:
 
@@ -27,7 +27,7 @@ that is the price of being light.
 | Part | Component |
 | --- | --- |
 | Editor | KTextEditor (the same as Kate): highlighting for hundreds of languages, multiple cursors, find/replace, `.editorconfig` |
-| Terminal | embedded Konsole (konsolepart): your shell and your Konsole profile |
+| Terminal | embedded Konsole (konsolepart): your login shell (or the one you pick) and your Konsole profile |
 | Search and `Ctrl+P` | ripgrep (`rg`): honours `.gitignore`, skips `node_modules` |
 | File icons | read from the VS Code extensions already installed (`workbench.iconTheme`, e.g. vscode-icons) |
 | Editor theme | "VSCodium Dark" with a dark system theme, "Breeze Light" with a light one |
@@ -46,8 +46,9 @@ The code is in `src/` (about 9,900 lines of C++, headers and blank lines include
 ## Install
 
 You need KDE Plasma 6 (or at least KDE Frameworks 6) with `qt6-base`, `qt6-svg`, `ktexteditor`, `kparts`,
-`kdbusaddons`, `kwindowsystem`, `syntax-highlighting`, `konsole` and `ripgrep`, plus `git`, `gcc`, `make` and
-`pkgconf` to build it. On Arch/CachyOS with Plasma almost everything is already installed. No CMake needed.
+`kdbusaddons`, `kwindowsystem`, `syntax-highlighting`, `ki18n`, `konsole` and `ripgrep`, plus `git`, `gcc`,
+`make`, `pkgconf` and `qt6-tools` (for the translations; without it Lieve builds in English only) to build it.
+On Arch/CachyOS with Plasma almost everything is already installed. No CMake needed.
 
 The easy way: the script downloads the latest release, builds it and installs it into `~/.local`
 (no `sudo`). If something is missing it tells you which packages to install (Arch and Fedora).
@@ -70,9 +71,9 @@ Uninstall: `make uninstall`.
 ### Updates
 
 Lieve checks by itself, shortly after starting and then every 6 hours, whether a new version is out on GitHub.
-If there is one, the status bar shows **⬆ Aggiornamento** (update): one click shows what's new, and
-**Aggiorna ora** (update now) downloads, builds and installs the new version in the background, in the same
-folder Lieve is installed in. When it's done, click **Riavvia** (restart). The downloaded sources stay in
+If there is one, the status bar shows **⬆ Update 0.x.y**: one click shows what's new, and
+**Update Now** downloads, builds and installs the new version in the background, in the same
+folder Lieve is installed in. When it's done, click **↻ Restart**. The downloaded sources stay in
 `~/.local/share/lieve/source`. Turn the check off with `[updates] check=false` in the settings (`Ctrl+,`).
 
 ## Usage
@@ -99,6 +100,16 @@ lieve --open-folder        # asks which folder to open
   program: it opens or raises the right window.
 - Right-click a project: **pin to top**, **remove from recent**, copy path, show in file manager.
 
+### Terminal
+
+`Ctrl+J` shows the terminal panel, `` Ctrl+Shift+` `` (or **+**) opens a new terminal in the project folder.
+
+- New terminals run your **login shell** (the one set with `chsh`, e.g. fish), not `$SHELL`.
+- The **⌄** button next to **+** lists the shells installed on the system (from `/etc/shells`): pick one to
+  open a terminal with it, or set it as the default under **Default Shell**.
+  The choice is saved in `lieve.conf` (`[terminal] shell=`) and applies to every window.
+- `[terminal] shell=` takes `auto` (the login shell), a name such as `fish`, `zsh`, `bash`, or a full path.
+
 ### Prettier on save
 
 It follows the same rules as VS Code, read from your settings: `editor.formatOnSave` and
@@ -109,7 +120,8 @@ plus `.prettierrc` (with its plugins), `.prettierignore` and `.editorconfig`.
 - Formatting happens right before writing: the file is written once (so `ng serve` rebuilds once).
   The cursor stays where it was and a single `Ctrl+Z` undoes it.
 - A small Node process keeps Prettier loaded: it starts when you begin editing a file and exits after
-  10 minutes of inactivity. Saving takes about 10-50 ms (the very first time about half a second).
+  10 minutes of inactivity (`[format] keepAliveMinutes=`). It is tuned to stay small: about 150 MB
+  with a large Angular project. Saving takes about 10-100 ms (the very first time about half a second).
 - If the file has a syntax error it is saved as it is and a notice appears at the bottom of the editor.
 - Node is looked up in `PATH` and in version managers (mise, volta, nvm, fnm), even when Lieve is started
   from the menu; you can set it by hand in `[format] node=`.
@@ -135,7 +147,8 @@ plus `.prettierrc` (with its plugins), `.prettierignore` and `.editorconfig`.
   asking for a password in the background.
 - Git hooks (husky, lint-staged…) find `node` even when Lieve is started from the menu.
 - **Inline blame**, like GitLens: at the end of the cursor line, in grey, who changed it, when and the commit
-  message ("Jane Doe, 1 year ago • fix: …"); uncommitted lines say "You, now".
+  message ("Jane Doe, 1 year ago • fix: …"); uncommitted lines say "You, now". git blame runs once per
+  file, in the background, and edits are followed in memory, so moving between lines is instant.
   Turn it off with `[git] inlineBlame=false`.
 
 ### Look
@@ -168,7 +181,7 @@ bar sits on a rounded tile. Light themes work too.
 ### Taskbar menu
 
 Right-click Lieve's icon (taskbar or application launcher) to get your pinned and recent projects (up to 8),
-**Scegli progetto…** (choose project) and **Apri cartella…** (open folder). Lieve keeps these entries up to
+**Choose Project…** and **Open Folder…**. Lieve keeps these entries up to
 date in `~/.local/share/applications/lieve.desktop` (only for the one installed by `make install`, which
 carries the line `X-Lieve-JumpList=true`).
 
@@ -209,11 +222,27 @@ every other key goes to the shell (including `Ctrl+R`, history search).
 In the Explorer: click to open, `F2` renames, `Delete` moves to the trash,
 right-click for new file/folder, copy path, open in terminal.
 
+## Language
+
+Lieve speaks the system language when it has a translation for it (today English and Italian), and English
+otherwise. To pick one yourself, set `[ui] language=` in the settings to `en` or `it` (`auto` follows the
+system) and restart. The editor and terminal, which come from KDE, follow the same choice.
+
+Translations live in `i18n/` as Qt Linguist files. To add a language:
+
+```bash
+make translations TS=i18n/lieve_de.ts   # creates the file with every string of the interface
+linguist i18n/lieve_de.ts               # translate (or edit the XML by hand)
+make                                    # builds it into Lieve
+```
+
+After changing strings in the code, `make translations` updates every `.ts` file.
+
 ## Settings
 
 `Ctrl+,` opens `~/.config/lieve/lieve.conf` (commented). You can change editor theme, font, minimap,
 word wrap, VS Code shortcuts, search and Explorer exclusions, icon theme, look (`[ui]`, `[terminal]`),
-project folders (`[projects] roots=`), Prettier (`[format]`: `onSave=auto|true|false`, minutes to wait
+project folders (`[projects] roots=`), language (`[ui] language=`), terminal shell (`[terminal] shell=`), Prettier (`[format]`: `onSave=auto|true|false`, minutes to wait
 before closing the process, path to node), Git (`[git]`: `smartCommit`, `autofetch`, `autofetchMinutes`,
 `inlineBlame`) and updates (`[updates] check`). Changes apply after a restart.
 

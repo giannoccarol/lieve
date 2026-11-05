@@ -4,12 +4,14 @@
 #include "quickopen.h"
 #include "settings.h"
 #include "theme.h"
+#include "terminalpanel.h"
 #include "updater.h"
 #include "version.h"
 #include "windowmanager.h"
 
 #include <KActionCollection>
 #include <KDBusService>
+#include <KLocalizedString>
 #include <KTextEditor/Document>
 #include <KTextEditor/View>
 
@@ -21,6 +23,7 @@
 #include <QElapsedTimer>
 #include <QLibraryInfo>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QToolButton>
@@ -59,8 +62,8 @@ void setupTestHooks(QApplication &app)
         const QString quickOpen = qEnvironmentVariable("LIEVE_TEST_QUICKOPEN");
         if (!quickOpen.isEmpty()) {
             const auto actions = window->actions();
-            for (QAction *action : actions) {
-                if (action->text() == QLatin1String("Apri file rapidamente")) {
+            for (QAction *action : actions) { // found by shortcut: the text depends on the interface language
+                if (action->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::Key_P))) {
                     action->trigger();
                 }
             }
@@ -72,8 +75,8 @@ void setupTestHooks(QApplication &app)
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_GIT")) {
             const auto actions = window->actions();
-            for (QAction *action : actions) {
-                if (action->text() == QLatin1String("Controllo del codice sorgente")) {
+            for (QAction *action : actions) { // found by shortcut: the text depends on the interface language
+                if (action->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G))) {
                     action->trigger();
                 }
             }
@@ -99,9 +102,31 @@ void setupTestHooks(QApplication &app)
                 }
             });
         }
+        const QString newShell = qEnvironmentVariable("LIEVE_TEST_NEW_SHELL"); // a second terminal with this shell
+        if (!newShell.isEmpty()) {
+            QTimer::singleShot(600, window, [window, newShell] {
+                if (auto *panel = window->findChild<TerminalPanel *>()) {
+                    panel->newTerminal(QString(), newShell);
+                }
+            });
+        }
+        if (qEnvironmentVariableIsSet("LIEVE_TEST_SHELL_MENU")) {
+            QTimer::singleShot(900, window, [window] {
+                if (auto *button = window->findChild<QToolButton *>(QStringLiteral("shellMenu")); button && button->menu()) {
+                    QMenu *menu = button->menu();
+                    Q_EMIT menu->aboutToShow(); // fills it
+                    const QString file = qEnvironmentVariable("LIEVE_SCREENSHOT");
+                    int n = 0;
+                    for (QMenu *m : QList<QMenu *>{menu} + menu->findChildren<QMenu *>()) {
+                        m->adjustSize();
+                        m->grab().save(QString(file).replace(QStringLiteral(".png"), QStringLiteral("-menu%1.png").arg(n++)));
+                    }
+                }
+            });
+        }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_HOVER")) { // show the hover look of the window buttons
             for (QToolButton *button : window->findChildren<QToolButton *>()) {
-                if (button->objectName() == QLatin1String("closeButton") || button->toolTip() == QLatin1String("Riduci a icona")) {
+                if (button->objectName() == QLatin1String("closeButton") || button->property("lieveRole").toString() == QLatin1String("minimize")) {
                     button->setAttribute(Qt::WA_UnderMouse, true);
                     button->update();
                 }
@@ -135,13 +160,14 @@ void setupTestHooks(QApplication &app)
         const auto windows = WindowManager::instance().windows();
         qInfo().noquote() << "windows" << windows.size();
         for (qsizetype i = 0; i < windows.size(); ++i) {
-            qInfo().noquote() << "window" << i << (windows.at(i)->project().isEmpty() ? QStringLiteral("(scelta progetto)") : windows.at(i)->project());
+            qInfo().noquote() << "window" << i << (windows.at(i)->project().isEmpty() ? QStringLiteral("(project chooser)") : windows.at(i)->project());
             QString file = screenshot;
             if (i > 0) {
                 file.replace(QStringLiteral(".png"), QStringLiteral("-%1.png").arg(i));
             }
             windows.at(i)->grab().save(file);
         }
+
         QApplication::exit(0);
     });
 }
@@ -157,8 +183,19 @@ int main(int argc, char **argv)
     QApplication::setDesktopFileName(QStringLiteral("lieve"));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/lieve.svg")));
 
+    // Interface language: the system's, unless [ui] language= picks another.
+    const QString language = Lieve::uiLanguage();
+    const QString languageSetting = Lieve::config().value(QStringLiteral("ui/language"), QStringLiteral("auto")).toString().trimmed();
+    if (!languageSetting.isEmpty() && languageSetting != QLatin1String("auto")) {
+        QLocale::setDefault(QLocale(language));
+        KLocalizedString::setLanguages({language}); // the editor and terminal parts too
+    }
+    QTranslator lieveTranslator;
+    if (language != QLatin1String("en") && lieveTranslator.load(QStringLiteral(":/i18n/lieve_%1.qm").arg(language))) {
+        QApplication::installTranslator(&lieveTranslator);
+    }
     QTranslator qtTranslator;
-    if (qtTranslator.load(QLocale(), QStringLiteral("qtbase"), QStringLiteral("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
+    if (qtTranslator.load(QLocale(language), QStringLiteral("qtbase"), QStringLiteral("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
         QApplication::installTranslator(&qtTranslator);
     }
 
@@ -184,6 +221,7 @@ int main(int argc, char **argv)
     Lieve::JumpList::update();
     Updater::instance().start();
     setupTestHooks(app);
+
 
     const int result = QApplication::exec();
     WindowManager::instance().deleteAll();

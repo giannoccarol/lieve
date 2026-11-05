@@ -6,10 +6,13 @@
 
 namespace Lieve
 {
-// User preferences: ~/.config/lieve/lieve.conf (only read, never rewritten,
-// so the comments in it survive).
+// User preferences: ~/.config/lieve/lieve.conf. QSettings only reads it, so
+// the comments in it survive.
 QString configFile();
 QSettings &config();
+// Changes one line of lieve.conf in place (adds it, with `comment` above it,
+// when missing) and reloads config().
+bool setConfigValue(const QString &section, const QString &key, const QString &value, const QString &comment = QString());
 
 // Window layout and open files: ~/.local/state/lieve/state.ini
 QSettings &state();
@@ -18,6 +21,12 @@ QSettings &state();
 void ensureConfigFile();
 
 bool isDarkTheme();
+
+// Languages Lieve's interface is translated into ("en" is the original).
+QStringList availableLanguages();
+// The interface language: [ui] language= ("auto" = the system's, the first
+// of its preferred languages Lieve has), e.g. "it"; "en" when none matches.
+QString uiLanguage();
 
 // The user's VS Code settings.json (Code, Code - OSS or VSCodium), read once.
 QJsonObject vscodeUserSettings();

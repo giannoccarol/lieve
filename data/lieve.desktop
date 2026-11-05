@@ -1,8 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=Lieve
-GenericName=Editor di codice
-Comment=Editor leggero con esplora risorse, ricerca e terminale
+GenericName=Code Editor
+GenericName[it]=Editor di codice
+Comment=Lightweight editor with explorer, search and terminal
+Comment[it]=Editor leggero con esplora risorse, ricerca e terminale
 Exec="@BIN@" %F
 TryExec=@BIN@
 Icon=lieve
@@ -15,11 +17,13 @@ X-Lieve-JumpList=true
 Actions=choose;open-folder;
 
 [Desktop Action choose]
-Name=Scegli progetto…
+Name=Choose Project…
+Name[it]=Scegli progetto…
 Icon=view-list-details
 Exec="@BIN@" --new-window
 
 [Desktop Action open-folder]
-Name=Apri cartella…
+Name=Open Folder…
+Name[it]=Apri cartella…
 Icon=folder-open
 Exec="@BIN@" --open-folder

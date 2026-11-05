@@ -2,6 +2,7 @@
 
 #include <QFileSystemWatcher>
 #include <QHash>
+#include <QSet>
 #include <QIcon>
 #include <QKeySequence>
 #include <QList>
@@ -33,6 +34,7 @@ class QFrame;
 class QMenu;
 class QSplitter;
 class QStackedWidget;
+class DocumentBlame;
 class QProcess;
 class StatusBar;
 class TabView;
@@ -72,6 +74,7 @@ Q_SIGNALS:
 
 protected:
     void changeEvent(QEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
@@ -126,7 +129,8 @@ private:
     void updateStatusBar();
     void updateGitStatus();
     void updateCursorStatus();
-    void runBlame();
+    void showBlame();
+    DocumentBlame *blameFor(KTextEditor::Document *doc);
     void onStatusClicked(const QString &name);
     void updateUpdaterStatus();
     void showUpdateDialog();
@@ -162,9 +166,9 @@ private:
     TabView *m_tabs = nullptr;
     TitleBar *m_titleBar = nullptr;
     StatusBar *m_status = nullptr;
-    QTimer m_blameTimer;
-    QProcess *m_blameProc = nullptr;
-    QString m_blameKey;
+    QHash<KTextEditor::Document *, DocumentBlame *> m_blames; // git blame of each open file
+    QSet<KTextEditor::Document *> m_staleBlames; // HEAD moved: blame again when shown
+    QString m_blameHead;
     QHash<QString, QString> m_gitEmails; // repository -> user.email
     QHash<KTextEditor::View *, KTextEditor::InlineNoteProvider *> m_blameNotes; // inline blame per view
     QWidget *m_body = nullptr;

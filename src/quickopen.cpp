@@ -43,7 +43,7 @@ QuickOpen::QuickOpen(QWidget *parent)
     layout->setContentsMargins(6, 6, 6, 6);
     layout->setSpacing(4);
     m_edit = new QLineEdit(this);
-    m_edit->setPlaceholderText(QStringLiteral("Cerca file per nome (aggiungi :riga per andare a una riga)"));
+    m_edit->setPlaceholderText(tr("Search files by name (append :line to go to a line)"));
     m_list = new QListWidget(this);
     m_list->setFrameShape(QFrame::NoFrame);
     m_list->setUniformItemSizes(true);

@@ -8,6 +8,7 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -19,15 +20,17 @@ namespace Lieve
 {
 void setupCommandLine(QCommandLineParser &parser)
 {
-    parser.setApplicationDescription(QStringLiteral("Lieve: editor di codice leggero (esplora risorse, ricerca, terminale)."));
+    parser.setApplicationDescription(QCoreApplication::translate("CommandLine", "Lieve: a lightweight code editor (explorer, search, terminal)."));
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addOption(QCommandLineOption(QStringLiteral("new-window"), QStringLiteral("Mostra la scelta del progetto in una finestra.")));
-    parser.addOption(QCommandLineOption(QStringLiteral("open-folder"), QStringLiteral("Chiede quale cartella aprire.")));
-    parser.addOption(QCommandLineOption(QStringLiteral("new-instance"), QStringLiteral("Avvia un processo separato invece di usare quello già aperto.")));
-    parser.addPositionalArgument(QStringLiteral("percorsi"),
-                                 QStringLiteral("Cartelle o file da aprire. Con file:riga si va direttamente alla riga."),
-                                 QStringLiteral("[percorsi...]"));
+    parser.addOption(QCommandLineOption(QStringLiteral("new-window"), QCoreApplication::translate("CommandLine", "Show the project chooser in a window.")));
+    parser.addOption(QCommandLineOption(QStringLiteral("open-folder"), QCoreApplication::translate("CommandLine", "Ask which folder to open.")));
+    parser.addOption(QCommandLineOption(QStringLiteral("new-instance"),
+                                        QCoreApplication::translate("CommandLine", "Start a separate process instead of using the one already running.")));
+    // The name and syntax of the positional argument only appear in --help.
+    parser.addPositionalArgument(QCoreApplication::translate("CommandLine", "paths"),
+                                 QCoreApplication::translate("CommandLine", "Folders or files to open. Use file:line to go straight to a line."),
+                                 QCoreApplication::translate("CommandLine", "[paths...]"));
 }
 }
 
@@ -102,7 +105,7 @@ MainWindow *WindowManager::openProject(const QString &path, MainWindow *reuse)
     const QFileInfo info(path);
     const QString canonical = info.canonicalFilePath();
     if (canonical.isEmpty() || !QFileInfo(canonical).isDir()) {
-        QMessageBox::warning(reuse, QStringLiteral("Lieve"), QStringLiteral("La cartella non esiste più:\n%1").arg(path));
+        QMessageBox::warning(reuse, QStringLiteral("Lieve"), tr("The folder no longer exists:\n%1").arg(path));
         return nullptr;
     }
     if (MainWindow *existing = windowFor(canonical)) {
@@ -135,7 +138,7 @@ void WindowManager::showChooser()
 void WindowManager::openFolderDialog(MainWindow *parent)
 {
     const QString start = (parent && !parent->project().isEmpty()) ? QFileInfo(parent->project()).absolutePath() : QDir::homePath();
-    const QString dir = QFileDialog::getExistingDirectory(parent, QStringLiteral("Apri cartella"), start);
+    const QString dir = QFileDialog::getExistingDirectory(parent, tr("Open Folder"), start);
     if (!dir.isEmpty()) {
         openProject(dir, parent);
     } else if (windows().isEmpty()) {

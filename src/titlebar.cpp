@@ -48,7 +48,7 @@ TitleBar::TitleBar(QWidget *parent)
     auto *logo = new QLabel(m_left);
     logo->setPixmap(QIcon(QStringLiteral(":/lieve.svg")).pixmap(18, 18));
     logo->setAttribute(Qt::WA_TransparentForMouseEvents);
-    m_menu = barButton(QIcon::fromTheme(QStringLiteral("application-menu")), QStringLiteral("Menu"), QStringLiteral("titleButton"), m_left);
+    m_menu = barButton(QIcon::fromTheme(QStringLiteral("application-menu")), tr("Menu"), QStringLiteral("titleButton"), m_left);
     m_menu->setPopupMode(QToolButton::InstantPopup);
     left->addWidget(logo);
     left->addWidget(m_menu);
@@ -64,9 +64,14 @@ TitleBar::TitleBar(QWidget *parent)
     m_toggles->setSpacing(2);
     right->addLayout(m_toggles);
     right->addSpacing(10);
-    m_minimize = barButton(Lieve::Theme::glyph(Lieve::Theme::Glyph::Minimize), QStringLiteral("Riduci a icona"), QStringLiteral("windowButton"), m_right);
-    m_maximize = barButton(Lieve::Theme::glyph(Lieve::Theme::Glyph::Maximize), QStringLiteral("Ingrandisci"), QStringLiteral("windowButton"), m_right);
-    m_close = barButton(Lieve::Theme::glyph(Lieve::Theme::Glyph::Close), QStringLiteral("Chiudi"), QStringLiteral("closeButton"), m_right);
+    m_minimize = barButton(Lieve::Theme::glyph(Lieve::Theme::Glyph::Minimize), tr("Minimize"), QStringLiteral("windowButton"), m_right);
+    m_maximize = barButton(Lieve::Theme::glyph(Lieve::Theme::Glyph::Maximize), tr("Maximize"), QStringLiteral("windowButton"), m_right);
+    m_close = barButton(Lieve::Theme::glyph(Lieve::Theme::Glyph::Close), tr("Close"), QStringLiteral("closeButton"), m_right);
+    // Stable ids that don't depend on the (translated) tooltips; the object
+    // names stay shared because the style sheet selects on them.
+    m_minimize->setProperty("lieveRole", QStringLiteral("minimize"));
+    m_maximize->setProperty("lieveRole", QStringLiteral("maximize"));
+    m_close->setProperty("lieveRole", QStringLiteral("close"));
     for (QToolButton *b : {m_minimize, m_maximize, m_close}) {
         b->setFixedSize(22, 22); // round on hover
     }
@@ -83,7 +88,7 @@ TitleBar::TitleBar(QWidget *parent)
     m_search->setIconSize(QSize(14, 14));
     m_search->setFocusPolicy(Qt::NoFocus);
     m_search->setCursor(Qt::PointingHandCursor);
-    m_search->setToolTip(QStringLiteral("Apri file (Ctrl+P)"));
+    m_search->setToolTip(tr("Go to File (Ctrl+P)"));
     connect(m_search, &QPushButton::clicked, this, &TitleBar::searchClicked);
 
     connect(m_minimize, &QToolButton::clicked, this, [this] {
@@ -221,5 +226,5 @@ void TitleBar::updateMaximizeIcon()
 {
     const bool maximized = window()->isMaximized();
     m_maximize->setIcon(Lieve::Theme::glyph(maximized ? Lieve::Theme::Glyph::Restore : Lieve::Theme::Glyph::Maximize));
-    m_maximize->setToolTip(maximized ? QStringLiteral("Ripristina") : QStringLiteral("Ingrandisci"));
+    m_maximize->setToolTip(maximized ? tr("Restore Down") : tr("Maximize"));
 }

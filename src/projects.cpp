@@ -2,11 +2,13 @@
 
 #include "settings.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QLocale>
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -294,28 +296,31 @@ QString prettyPath(const QString &path)
 QString relativeAge(qint64 seconds)
 {
     const qint64 ago = QDateTime::currentSecsSinceEpoch() - seconds;
-    const auto plural = [](qint64 n, const char *one, const char *many) {
-        return n == 1 ? QStringLiteral("1 %1 fa").arg(QLatin1String(one)) : QStringLiteral("%1 %2 fa").arg(n).arg(QLatin1String(many));
-    };
     if (ago < 60) {
-        return QStringLiteral("adesso");
+        return QCoreApplication::translate("Projects", "now");
     }
     if (ago < 3600) {
-        return plural(ago / 60, "minuto", "minuti");
+        const qint64 n = ago / 60;
+        return n == 1 ? QCoreApplication::translate("Projects", "1 minute ago") : QCoreApplication::translate("Projects", "%1 minutes ago").arg(n);
     }
     if (ago < 86400) {
-        return plural(ago / 3600, "ora", "ore");
+        const qint64 n = ago / 3600;
+        return n == 1 ? QCoreApplication::translate("Projects", "1 hour ago") : QCoreApplication::translate("Projects", "%1 hours ago").arg(n);
     }
     if (ago < 7 * 86400) {
-        return ago < 2 * 86400 ? QStringLiteral("ieri") : plural(ago / 86400, "giorno", "giorni");
+        return ago < 2 * 86400 ? QCoreApplication::translate("Projects", "yesterday")
+                               : QCoreApplication::translate("Projects", "%1 days ago").arg(ago / 86400);
     }
     if (ago < 30 * 86400) {
-        return plural(ago / (7 * 86400), "settimana", "settimane");
+        const qint64 n = ago / (7 * 86400);
+        return n == 1 ? QCoreApplication::translate("Projects", "1 week ago") : QCoreApplication::translate("Projects", "%1 weeks ago").arg(n);
     }
     if (ago < 365 * 86400) {
-        return plural(ago / (30 * 86400), "mese", "mesi");
+        const qint64 n = ago / (30 * 86400);
+        return n == 1 ? QCoreApplication::translate("Projects", "1 month ago") : QCoreApplication::translate("Projects", "%1 months ago").arg(n);
     }
-    return plural(ago / (365 * 86400), "anno", "anni");
+    const qint64 n = ago / (365 * 86400);
+    return n == 1 ? QCoreApplication::translate("Projects", "1 year ago") : QCoreApplication::translate("Projects", "%1 years ago").arg(n);
 }
 
 QString relativeTime(qint64 seconds)
@@ -326,22 +331,22 @@ QString relativeTime(qint64 seconds)
     const QDateTime then = QDateTime::fromSecsSinceEpoch(seconds);
     const qint64 ago = QDateTime::currentSecsSinceEpoch() - seconds;
     if (ago < 60) {
-        return QStringLiteral("adesso");
+        return QCoreApplication::translate("Projects", "now");
     }
     if (ago < 3600) {
         const qint64 m = ago / 60;
-        return m == 1 ? QStringLiteral("1 minuto fa") : QStringLiteral("%1 minuti fa").arg(m);
+        return m == 1 ? QCoreApplication::translate("Projects", "1 minute ago") : QCoreApplication::translate("Projects", "%1 minutes ago").arg(m);
     }
     const qint64 days = then.date().daysTo(QDate::currentDate());
     if (days == 0) {
         const qint64 h = ago / 3600;
-        return h == 1 ? QStringLiteral("1 ora fa") : QStringLiteral("%1 ore fa").arg(h);
+        return h == 1 ? QCoreApplication::translate("Projects", "1 hour ago") : QCoreApplication::translate("Projects", "%1 hours ago").arg(h);
     }
     if (days == 1) {
-        return QStringLiteral("ieri");
+        return QCoreApplication::translate("Projects", "yesterday");
     }
     if (days < 7) {
-        return QStringLiteral("%1 giorni fa").arg(days);
+        return QCoreApplication::translate("Projects", "%1 days ago").arg(days);
     }
     return QLocale().toString(then.date(), QLocale::ShortFormat);
 }

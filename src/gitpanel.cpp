@@ -6,6 +6,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QKeyEvent>
@@ -68,21 +69,21 @@ QString statusText(QChar status)
 {
     switch (status.unicode()) {
     case 'A':
-        return QStringLiteral("Aggiunto");
+        return QCoreApplication::translate("GitPanel", "Added");
     case 'U':
-        return QStringLiteral("Non tracciato");
+        return QCoreApplication::translate("GitPanel", "Untracked");
     case 'D':
-        return QStringLiteral("Eliminato");
+        return QCoreApplication::translate("GitPanel", "Deleted");
     case 'R':
-        return QStringLiteral("Rinominato");
+        return QCoreApplication::translate("GitPanel", "Renamed");
     case 'C':
-        return QStringLiteral("Copiato");
+        return QCoreApplication::translate("GitPanel", "Copied");
     case 'T':
-        return QStringLiteral("Tipo cambiato");
+        return QCoreApplication::translate("GitPanel", "Type Changed");
     case '!':
-        return QStringLiteral("Conflitto");
+        return QCoreApplication::translate("GitPanel", "Conflict");
     default:
-        return QStringLiteral("Modificato");
+        return QCoreApplication::translate("GitPanel", "Modified");
     }
 }
 
@@ -138,13 +139,16 @@ QString actionTip(GitPanel::Action action, bool section)
 {
     switch (action) {
     case GitPanel::OpenFile:
-        return QStringLiteral("Apri il file");
+        return QCoreApplication::translate("GitPanel", "Open File");
     case GitPanel::Discard:
-        return section ? QStringLiteral("Annulla tutte le modifiche") : QStringLiteral("Annulla le modifiche");
+        return section ? QCoreApplication::translate("GitPanel", "Discard All Changes")
+                       : QCoreApplication::translate("GitPanel", "Discard Changes");
     case GitPanel::Stage:
-        return section ? QStringLiteral("Prepara tutte per il commit") : QStringLiteral("Prepara per il commit");
+        return section ? QCoreApplication::translate("GitPanel", "Stage All Changes")
+                       : QCoreApplication::translate("GitPanel", "Stage Changes");
     case GitPanel::Unstage:
-        return section ? QStringLiteral("Rimuovi tutte dalla preparazione") : QStringLiteral("Rimuovi dalla preparazione");
+        return section ? QCoreApplication::translate("GitPanel", "Unstage All Changes")
+                       : QCoreApplication::translate("GitPanel", "Unstage Changes");
     }
     return {};
 }
@@ -329,7 +333,7 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
     // Header
     auto *header = new QHBoxLayout;
     header->setContentsMargins(4, 0, 0, 0);
-    auto *title = new QLabel(QStringLiteral("CONTROLLO SORGENTE"), this);
+    auto *title = new QLabel(tr("SOURCE CONTROL"), this);
     title->setObjectName(QStringLiteral("sideTitle"));
     QFont titleFont = title->font();
     titleFont.setBold(true);
@@ -337,8 +341,8 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
     title->setFont(titleFont);
     title->setMinimumWidth(1);
     header->addWidget(title, 1);
-    auto *refresh = headerButton(QStringLiteral("view-refresh"), QStringLiteral("Aggiorna"), this);
-    auto *more = headerButton(QStringLiteral("overflow-menu"), QStringLiteral("Altre azioni"), this);
+    auto *refresh = headerButton(QStringLiteral("view-refresh"), tr("Refresh"), this);
+    auto *more = headerButton(QStringLiteral("overflow-menu"), tr("More Actions"), this);
     if (more->icon().isNull()) {
         more->setIcon(QIcon::fromTheme(QStringLiteral("application-menu")));
     }
@@ -383,7 +387,7 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
     m_commitMenu = new QToolButton(repoPage);
     m_commitMenu->setObjectName(QStringLiteral("primarySplit"));
     m_commitMenu->setPopupMode(QToolButton::InstantPopup);
-    m_commitMenu->setToolTip(QStringLiteral("Altre azioni di commit"));
+    m_commitMenu->setToolTip(tr("More Commit Actions"));
     m_commitMenu->setFixedHeight(m_commit->sizeHint().height());
     commitRow->addWidget(m_commit, 1);
     commitRow->addWidget(m_commitMenu);
@@ -410,7 +414,7 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
     el->setContentsMargins(4, 8, 4, 8);
     m_noRepo = new QLabel(emptyPage);
     m_noRepo->setWordWrap(true);
-    m_init = new QPushButton(QIcon::fromTheme(QStringLiteral("vcs-branch")), QStringLiteral("Inizializza repository"), emptyPage);
+    m_init = new QPushButton(QIcon::fromTheme(QStringLiteral("vcs-branch")), tr("Initialize Repository"), emptyPage);
     el->addWidget(m_noRepo);
     el->addWidget(m_init);
     el->addStretch(1);
@@ -418,30 +422,30 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
 
     // Menus
     auto *commitMenu = new QMenu(this);
-    commitMenu->addAction(QIcon::fromTheme(QStringLiteral("dialog-ok-apply")), QStringLiteral("Commit"), this, [this] {
+    commitMenu->addAction(QIcon::fromTheme(QStringLiteral("dialog-ok-apply")), tr("Commit"), this, [this] {
         commit(GitRepo::After::Nothing, false);
     });
-    commitMenu->addAction(QStringLiteral("Commit (modifica l'ultimo)"), this, [this] {
+    commitMenu->addAction(tr("Commit (Amend)"), this, [this] {
         commit(GitRepo::After::Nothing, true);
     });
     commitMenu->addSeparator();
-    commitMenu->addAction(QIcon::fromTheme(QStringLiteral("go-up")), QStringLiteral("Commit e push"), this, [this] {
+    commitMenu->addAction(QIcon::fromTheme(QStringLiteral("go-up")), tr("Commit && Push"), this, [this] {
         commit(GitRepo::After::Push, false);
     });
-    commitMenu->addAction(QIcon::fromTheme(QStringLiteral("view-refresh")), QStringLiteral("Commit e sincronizza"), this, [this] {
+    commitMenu->addAction(QIcon::fromTheme(QStringLiteral("view-refresh")), tr("Commit && Sync"), this, [this] {
         commit(GitRepo::After::Sync, false);
     });
     m_commitMenu->setMenu(commitMenu);
 
     auto *moreMenu = new QMenu(this);
-    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("view-refresh")), QStringLiteral("Sincronizza (pull e push)"), m_repo, &GitRepo::sync);
-    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("go-down")), QStringLiteral("Pull"), m_repo, &GitRepo::pull);
-    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("go-up")), QStringLiteral("Push"), m_repo, &GitRepo::push);
-    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("download")), QStringLiteral("Recupera (fetch)"), this, [this] {
+    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("view-refresh")), tr("Sync (Pull and Push)"), m_repo, &GitRepo::sync);
+    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("go-down")), tr("Pull"), m_repo, &GitRepo::pull);
+    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("go-up")), tr("Push"), m_repo, &GitRepo::push);
+    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("download")), tr("Fetch"), this, [this] {
         m_repo->fetch(false);
     });
     moreMenu->addSeparator();
-    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("list-add")), QStringLiteral("Prepara tutte le modifiche"), this, [this] {
+    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("list-add")), tr("Stage All Changes", "overflow menu"), this, [this] {
         QStringList paths;
         for (const GitEntry &e : m_repo->entries()) {
             if (e.group != GitEntry::Staged) {
@@ -450,16 +454,16 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
         }
         m_repo->stage(paths);
     });
-    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("list-remove")), QStringLiteral("Rimuovi tutte dalla preparazione"), this, [this] {
+    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("list-remove")), tr("Unstage All Changes"), this, [this] {
         m_repo->unstage(m_repo->entries());
     });
     moreMenu->addSeparator();
-    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("edit-undo")), QStringLiteral("Annulla l'ultimo commit"), this, [this] {
+    moreMenu->addAction(QIcon::fromTheme(QStringLiteral("edit-undo")), tr("Undo Last Commit"), this, [this] {
         if (!m_repo->upstream().isEmpty() && m_repo->ahead() == 0) {
             const auto answer = QMessageBox::question(this,
-                                                      QStringLiteral("Annulla l'ultimo commit"),
-                                                      QStringLiteral("L'ultimo commit è già stato inviato al server. Annullarlo comunque?\n"
-                                                                     "Le modifiche restano preparate e il messaggio torna nella casella."));
+                                                      tr("Undo Last Commit"),
+                                                      tr("The last commit has already been pushed to the server. Undo it anyway?\n"
+                                                         "The changes stay staged and the message goes back into the message box."));
             if (answer != QMessageBox::Yes) {
                 return;
             }
@@ -559,15 +563,14 @@ void GitPanel::adjustMessageHeight()
 void GitPanel::rebuild()
 {
     if (!GitRepo::gitInstalled()) {
-        m_noRepo->setText(QStringLiteral("git non è installato."));
+        m_noRepo->setText(tr("git is not installed."));
         m_init->hide();
         m_branch->clear();
         m_stack->setCurrentIndex(1);
         return;
     }
     if (!m_repo->isRepository()) {
-        m_noRepo->setText(m_repo->directory().isEmpty() ? QStringLiteral("Nessun progetto aperto.")
-                                                        : QStringLiteral("Questa cartella non è un repository git."));
+        m_noRepo->setText(m_repo->directory().isEmpty() ? tr("No project is open.") : tr("This folder is not a git repository."));
         m_init->setVisible(!m_repo->directory().isEmpty());
         m_branch->clear();
         m_stack->setCurrentIndex(1);
@@ -578,16 +581,16 @@ void GitPanel::rebuild()
     // Branch line
     QString branch = m_repo->branch();
     if (branch == QLatin1String("(detached)")) {
-        branch = QStringLiteral("HEAD staccato");
+        branch = tr("detached HEAD");
     }
     QString line = branch;
     if (!m_repo->upstream().isEmpty()) {
         line += QStringLiteral("   ↓%1 ↑%2").arg(m_repo->behind()).arg(m_repo->ahead());
     } else if (!m_repo->unborn()) {
-        line += QStringLiteral("   (non pubblicato)");
+        line = tr("%1   (unpublished)").arg(branch);
     }
     m_branch->setText(line);
-    m_message->setPlaceholderText(QStringLiteral("Messaggio (Ctrl+Invio per il commit su “%1”)").arg(branch));
+    m_message->setPlaceholderText(tr("Message (Ctrl+Enter to commit on '%1')").arg(branch));
 
     // Keep the selection and the scroll position across refreshes
     QString selected;
@@ -600,9 +603,9 @@ void GitPanel::rebuild()
 
     const QList<GitEntry> &entries = m_repo->entries();
     const QPair<GitEntry::Group, QString> sections[] = {
-        {GitEntry::Conflicts, QStringLiteral("Conflitti di unione")},
-        {GitEntry::Staged, QStringLiteral("Modifiche preparate per il commit")},
-        {GitEntry::Changes, QStringLiteral("Modifiche")},
+        {GitEntry::Conflicts, tr("Merge Changes")},
+        {GitEntry::Staged, tr("Staged Changes")},
+        {GitEntry::Changes, tr("Changes")},
     };
     QTreeWidgetItem *toSelect = nullptr;
     for (const auto &[group, title] : sections) {
@@ -634,7 +637,7 @@ void GitPanel::rebuild()
             item->setData(0, OrigRole, e.origPath);
             QString dir = fi.path() == QLatin1String(".") ? QString() : fi.path();
             if (!e.origPath.isEmpty()) {
-                dir = QStringLiteral("da %1").arg(e.origPath);
+                dir = tr("from %1").arg(e.origPath);
             }
             item->setData(0, DirRole, dir);
             item->setToolTip(0, QStringLiteral("%1 • %2").arg(e.path, statusText(e.status)));
@@ -668,13 +671,13 @@ void GitPanel::updateCommitButton()
     m_commit->setProperty("mode", mode);
     if (mode == QLatin1String("publish")) {
         m_commit->setIcon(QIcon::fromTheme(QStringLiteral("cloud-upload"), QIcon::fromTheme(QStringLiteral("go-up"))));
-        m_commit->setText(QStringLiteral("Pubblica branch"));
+        m_commit->setText(tr("Publish Branch"));
     } else if (mode == QLatin1String("sync")) {
         m_commit->setIcon(QIcon::fromTheme(QStringLiteral("view-refresh")));
-        m_commit->setText(QStringLiteral("Sincronizza modifiche  ↓%1 ↑%2").arg(m_repo->behind()).arg(m_repo->ahead()));
+        m_commit->setText(tr("Sync Changes  ↓%1 ↑%2").arg(m_repo->behind()).arg(m_repo->ahead()));
     } else {
         m_commit->setIcon(QIcon::fromTheme(QStringLiteral("dialog-ok-apply")));
-        m_commit->setText(QStringLiteral("Commit"));
+        m_commit->setText(tr("Commit"));
     }
     m_commit->setEnabled(!busy && (changes || mode != QLatin1String("commit")));
     m_commitMenu->setEnabled(!busy);
@@ -700,7 +703,7 @@ void GitPanel::commit(GitRepo::After after, bool amend)
     const QString message = m_message->toPlainText().trimmed();
     if (message.isEmpty() && !amend) {
         m_message->setFocus();
-        QToolTip::showText(m_message->mapToGlobal(QPoint(0, m_message->height())), QStringLiteral("Scrivi un messaggio per il commit."), m_message);
+        QToolTip::showText(m_message->mapToGlobal(QPoint(0, m_message->height())), tr("Write a commit message."), m_message);
         return;
     }
     bool stageAll = false;
@@ -713,9 +716,9 @@ void GitPanel::commit(GitRepo::After after, bool amend)
             stageAll = true;
         } else {
             const auto answer = QMessageBox::question(this,
-                                                      QStringLiteral("Commit"),
-                                                      QStringLiteral("Non ci sono modifiche preparate per il commit.\n"
-                                                                     "Vuoi preparare tutte le modifiche e fare il commit?"));
+                                                      tr("Commit"),
+                                                      tr("There are no staged changes to commit.\n"
+                                                         "Would you like to stage all your changes and commit them?"));
             if (answer != QMessageBox::Yes) {
                 return;
             }
@@ -767,19 +770,26 @@ bool GitPanel::confirmDiscard(const QList<GitEntry> &entries)
     QString text;
     if (changes.size() == 1) {
         const QString name = QFileInfo(changes.first().path).fileName();
-        text = untracked ? QStringLiteral("Spostare nel cestino il file nuovo «%1»?").arg(name)
-                         : QStringLiteral("Annullare le modifiche a «%1»?\nLe modifiche andranno perse.").arg(name);
+        text = untracked ? tr("Move the untracked file '%1' to the trash?").arg(name)
+                         : tr("Discard the changes in '%1'?\nThe changes will be lost.").arg(name);
+    } else if (untracked == 0) {
+        text = tr("Discard the changes in %1 files?\nThe changes will be lost.").arg(changes.size());
+    } else if (untracked == changes.size()) {
+        text = tr("Discard the changes in %1 files?\n%2 untracked files will be moved to the trash.").arg(changes.size()).arg(untracked);
+    } else if (untracked == 1) {
+        text = tr("Discard the changes in %1 files?\n"
+                  "1 untracked file will be moved to the trash.\n"
+                  "The changes to the other files will be lost.")
+                   .arg(changes.size());
     } else {
-        text = QStringLiteral("Annullare le modifiche a %1 file?").arg(changes.size());
-        if (untracked > 0) {
-            text += QStringLiteral("\n%1 file nuovi verranno spostati nel cestino.").arg(untracked);
-        }
-        if (untracked < changes.size()) {
-            text += QStringLiteral("\nLe modifiche agli altri file andranno perse.");
-        }
+        text = tr("Discard the changes in %1 files?\n"
+                  "%2 untracked files will be moved to the trash.\n"
+                  "The changes to the other files will be lost.")
+                   .arg(changes.size())
+                   .arg(untracked);
     }
-    QMessageBox box(QMessageBox::Warning, QStringLiteral("Annulla modifiche"), text, QMessageBox::Cancel, this);
-    QPushButton *confirm = box.addButton(QStringLiteral("Annulla modifiche"), QMessageBox::DestructiveRole);
+    QMessageBox box(QMessageBox::Warning, tr("Discard Changes", "confirmation dialog"), text, QMessageBox::Cancel, this);
+    QPushButton *confirm = box.addButton(tr("Discard Changes", "confirmation dialog"), QMessageBox::DestructiveRole);
     box.setDefaultButton(QMessageBox::Cancel);
     box.exec();
     return box.clickedButton() == confirm;
@@ -837,13 +847,13 @@ void GitPanel::showMenu(const QPoint &pos)
     QMenu menu(this);
     if (!section) {
         menu.addAction(QIcon::fromTheme(QStringLiteral("view-split-left-right"), QIcon::fromTheme(QStringLiteral("document-preview"))),
-                       QStringLiteral("Mostra le differenze"),
+                       tr("Open Changes"),
                        this,
                        [this, item] {
                            activate(item);
                        });
         if (item->data(0, StatusRole).toString() != QLatin1String("D")) {
-            menu.addAction(QIcon::fromTheme(QStringLiteral("document-open")), QStringLiteral("Apri il file"), this, [this, item] {
+            menu.addAction(QIcon::fromTheme(QStringLiteral("document-open")), tr("Open File"), this, [this, item] {
                 runAction(item, OpenFile);
             });
         }
@@ -861,10 +871,10 @@ void GitPanel::showMenu(const QPoint &pos)
     if (!section) {
         menu.addSeparator();
         const QString path = item->data(0, PathRole).toString();
-        menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), QStringLiteral("Copia percorso"), this, [this, path] {
+        menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), tr("Copy Path"), this, [this, path] {
             QApplication::clipboard()->setText(m_repo->absolutePath(path));
         });
-        menu.addAction(QStringLiteral("Copia percorso relativo"), this, [path] {
+        menu.addAction(tr("Copy Relative Path"), this, [path] {
             QApplication::clipboard()->setText(path);
         });
     }

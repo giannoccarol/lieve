@@ -3,6 +3,7 @@
 #include "prettier.h"
 #include "settings.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -47,7 +48,7 @@ QString outputText(const QByteArray &err, const QByteArray &out)
     if (text.isEmpty()) {
         text = QString::fromUtf8(out).trimmed();
     }
-    return text.isEmpty() ? QStringLiteral("git non ha dato altre informazioni.") : text;
+    return text.isEmpty() ? QCoreApplication::translate("Lieve::GitRepo", "git gave no further details.") : text;
 }
 
 // Text after the n-th space (porcelain v2 records end with the path, which
@@ -305,6 +306,7 @@ void GitRepo::parseStatus(const QByteArray &out)
                 m_branch = QString::fromUtf8(r.mid(14));
             } else if (r.startsWith("# branch.oid ")) {
                 m_unborn = r.mid(13) == "(initial)";
+                m_head = QString::fromLatin1(r.mid(13));
             } else if (r.startsWith("# branch.upstream ")) {
                 m_upstream = QString::fromUtf8(r.mid(18));
             } else if (r.startsWith("# branch.ab ")) {
@@ -357,7 +359,7 @@ void GitRepo::stage(const QStringList &paths)
     }
     Job job;
     job.args = QStringList{QStringLiteral("add"), QStringLiteral("-A"), QStringLiteral("--")} + paths;
-    job.title = QStringLiteral("Impossibile preparare i file");
+    job.title = tr("Couldn't stage the files");
     enqueue(std::move(job));
 }
 
@@ -379,7 +381,7 @@ void GitRepo::unstage(const QList<GitEntry> &entries)
     job.args = m_unborn ? QStringList{QStringLiteral("rm"), QStringLiteral("--cached"), QStringLiteral("-r"), QStringLiteral("-q"), QStringLiteral("--")}
                         : QStringList{QStringLiteral("restore"), QStringLiteral("--staged"), QStringLiteral("--")};
     job.args += paths;
-    job.title = QStringLiteral("Impossibile rimuovere dalla preparazione");
+    job.title = tr("Couldn't unstage the files");
     enqueue(std::move(job));
 }
 
@@ -400,7 +402,7 @@ void GitRepo::discard(const QList<GitEntry> &entries)
         }
     }
     if (!notTrashed.isEmpty()) {
-        Q_EMIT failed(QStringLiteral("Impossibile spostare nel cestino"), notTrashed.join(QLatin1Char('\n')));
+        Q_EMIT failed(tr("Couldn't move to the trash"), notTrashed.join(QLatin1Char('\n')));
     }
     if (tracked.isEmpty()) {
         refresh();
@@ -408,7 +410,7 @@ void GitRepo::discard(const QList<GitEntry> &entries)
     }
     Job job;
     job.args = QStringList{QStringLiteral("restore"), QStringLiteral("--worktree"), QStringLiteral("--")} + tracked;
-    job.title = QStringLiteral("Impossibile annullare le modifiche");
+    job.title = tr("Couldn't discard the changes");
     enqueue(std::move(job));
 }
 
@@ -425,7 +427,7 @@ void GitRepo::commit(const QString &message, bool amend, bool stageAll, After af
         commitJob.args << QStringLiteral("-F") << QStringLiteral("-");
         commitJob.input = message.toUtf8();
     }
-    commitJob.title = QStringLiteral("Commit non riuscito");
+    commitJob.title = tr("Commit failed");
     commitJob.done = [this, after](int code, const QByteArray &, const QByteArray &) {
         if (code != 0) {
             return;
@@ -443,7 +445,7 @@ void GitRepo::commit(const QString &message, bool amend, bool stageAll, After af
     }
     Job add;
     add.args = {QStringLiteral("add"), QStringLiteral("-A")};
-    add.title = QStringLiteral("Impossibile preparare le modifiche");
+    add.title = tr("Couldn't stage the changes");
     add.done = [this, commitJob](int code, const QByteArray &, const QByteArray &) {
         if (code == 0) {
             enqueue(commitJob);
@@ -457,10 +459,10 @@ void GitRepo::push()
     Job job;
     if (m_upstream.isEmpty()) { // publish the branch
         job.args = {QStringLiteral("push"), QStringLiteral("-u"), QStringLiteral("origin"), QStringLiteral("HEAD")};
-        job.title = QStringLiteral("Pubblicazione del branch non riuscita");
+        job.title = tr("Publishing the branch failed");
     } else {
         job.args = {QStringLiteral("push")};
-        job.title = QStringLiteral("Push non riuscito");
+        job.title = tr("Push failed");
     }
     enqueue(std::move(job));
 }
@@ -469,7 +471,7 @@ void GitRepo::pull()
 {
     Job job;
     job.args = {QStringLiteral("pull")};
-    job.title = QStringLiteral("Pull non riuscito");
+    job.title = tr("Pull failed");
     enqueue(std::move(job));
 }
 
@@ -481,7 +483,7 @@ void GitRepo::sync()
     }
     Job job;
     job.args = {QStringLiteral("pull")};
-    job.title = QStringLiteral("Sincronizzazione non riuscita");
+    job.title = tr("Sync failed");
     job.done = [this](int code, const QByteArray &, const QByteArray &) {
         if (code == 0) {
             push();
@@ -497,7 +499,7 @@ void GitRepo::fetch(bool quiet)
     }
     Job job;
     job.args = {QStringLiteral("fetch"), QStringLiteral("--prune")};
-    job.title = quiet ? QString() : QStringLiteral("Recupero non riuscito");
+    job.title = quiet ? QString() : tr("Fetch failed");
     job.busy = !quiet;
     job.done = [this, quiet](int, const QByteArray &, const QByteArray &) {
         if (quiet) {
@@ -514,13 +516,13 @@ void GitRepo::undoLastCommit()
     log.busy = false;
     log.done = [this](int code, const QByteArray &out, const QByteArray &) {
         if (code != 0) {
-            Q_EMIT failed(QStringLiteral("Annulla ultimo commit"), QStringLiteral("Non c'è nessun commit da annullare."));
+            Q_EMIT failed(tr("Undo Last Commit"), tr("There is no commit to undo."));
             return;
         }
         const QString message = QString::fromUtf8(out).trimmed();
         Job reset;
         reset.args = {QStringLiteral("reset"), QStringLiteral("--soft"), QStringLiteral("HEAD~1")};
-        reset.title = QStringLiteral("Impossibile annullare l'ultimo commit");
+        reset.title = tr("Couldn't undo the last commit");
         reset.done = [this, message](int c, const QByteArray &, const QByteArray &) {
             if (c == 0) {
                 Q_EMIT messageRestored(message);
@@ -538,7 +540,7 @@ void GitRepo::init()
     }
     Job job;
     job.args = {QStringLiteral("init")};
-    job.title = QStringLiteral("Impossibile inizializzare il repository");
+    job.title = tr("Couldn't initialize the repository");
     job.done = [this](int code, const QByteArray &, const QByteArray &) {
         if (code == 0) {
             const QString dir = m_directory;

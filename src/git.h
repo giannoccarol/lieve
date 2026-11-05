@@ -76,6 +76,11 @@ public:
     {
         return m_unborn;
     }
+    // The commit HEAD points to ("(initial)" before the first commit).
+    QString head() const
+    {
+        return m_head;
+    }
     const QList<GitEntry> &entries() const
     {
         return m_entries;
@@ -131,6 +136,7 @@ private:
     int m_ahead = 0;
     int m_behind = 0;
     bool m_unborn = false;
+    QString m_head;
     QList<GitEntry> m_entries;
 
     QList<Job> m_queue;

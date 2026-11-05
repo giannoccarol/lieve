@@ -1,5 +1,6 @@
 #include "terminalpanel.h"
 
+#include "settings.h"
 #include "tabview.h"
 #include "theme.h"
 
@@ -15,11 +16,98 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QKeyEvent>
+#include <QActionGroup>
+#include <QFile>
 #include <QLabel>
+#include <QMenu>
+#include <QStandardPaths>
 #include <QTabBar>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include <pwd.h>
+#include <unistd.h>
+
+namespace
+{
+struct Shell {
+    QString name; // "fish"
+    QString path; // "/usr/bin/fish"
+};
+
+bool isExecutable(const QString &path)
+{
+    const QFileInfo info(path);
+    return info.isFile() && info.isExecutable();
+}
+
+// The shell chosen for this user (chsh), the one a Konsole window opens.
+QString loginShell()
+{
+    if (const passwd *pw = getpwuid(getuid()); pw && pw->pw_shell && isExecutable(QString::fromLocal8Bit(pw->pw_shell))) {
+        return QString::fromLocal8Bit(pw->pw_shell);
+    }
+    const QString env = qEnvironmentVariable("SHELL");
+    return isExecutable(env) ? env : QStringLiteral("/bin/sh");
+}
+
+// Interactive shells listed in /etc/shells, plus the login shell and $SHELL.
+// Paths that lead to the same program (/bin/bash, /usr/bin/bash, /bin/sh on
+// Arch) appear once.
+QList<Shell> availableShells()
+{
+    static const QStringList skip = {QStringLiteral("rbash"), QStringLiteral("git-shell"), QStringLiteral("nologin"),
+                                     QStringLiteral("false"), QStringLiteral("systemd-home-fallback-shell")};
+    QStringList candidates;
+    QFile file(QStringLiteral("/etc/shells"));
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QStringList lines = QString::fromLocal8Bit(file.readAll()).split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            const QString path = line.trimmed();
+            if (path.startsWith(QLatin1Char('/'))) {
+                candidates << path;
+            }
+        }
+    }
+    candidates << loginShell() << qEnvironmentVariable("SHELL");
+
+    QList<Shell> shells;
+    QStringList seen;
+    for (const QString &path : std::as_const(candidates)) {
+        if (!isExecutable(path)) {
+            continue;
+        }
+        const QString real = QFileInfo(path).canonicalFilePath();
+        const QString name = QFileInfo(real).fileName();
+        if (seen.contains(real) || skip.contains(name) || skip.contains(QFileInfo(path).fileName())) {
+            continue;
+        }
+        seen << real;
+        shells.append({name, real});
+    }
+    std::sort(shells.begin(), shells.end(), [](const Shell &a, const Shell &b) {
+        return a.name < b.name;
+    });
+    return shells;
+}
+
+// [terminal] shell=: "auto" (or empty) = the login shell; otherwise a name
+// ("fish") or a path. Falls back to the login shell if it cannot be found.
+QString shellSetting()
+{
+    return Lieve::config().value(QStringLiteral("terminal/shell"), QStringLiteral("auto")).toString().trimmed();
+}
+
+QString resolveShell(const QString &setting)
+{
+    if (setting.isEmpty() || setting == QLatin1String("auto")) {
+        return loginShell();
+    }
+    const QString path = setting.contains(QLatin1Char('/')) ? setting : QStandardPaths::findExecutable(setting);
+    return isExecutable(path) ? path : loginShell();
+}
+}
 
 TerminalPanel::TerminalPanel(QWidget *parent)
     : QWidget(parent)
@@ -37,13 +125,27 @@ TerminalPanel::TerminalPanel(QWidget *parent)
     cl->setSpacing(0);
     auto *add = new QToolButton(corner);
     add->setIcon(QIcon::fromTheme(QStringLiteral("list-add")));
-    add->setToolTip(QStringLiteral("Nuovo terminale (Ctrl+Shift+`)"));
+    add->setToolTip(tr("New Terminal (Ctrl+Shift+`)"));
     add->setAutoRaise(true);
+    // Like VS Code's "Launch Profile..." next to +: a terminal with another
+    // shell, or the default shell.
+    auto *shells = new QToolButton(corner);
+    shells->setObjectName(QStringLiteral("shellMenu"));
+    shells->setIcon(Lieve::Theme::glyph(Lieve::Theme::Glyph::ChevronDown));
+    shells->setToolTip(tr("Choose Shell"));
+    shells->setAutoRaise(true);
+    shells->setPopupMode(QToolButton::InstantPopup);
+    auto *shellMenu = new QMenu(shells);
+    connect(shellMenu, &QMenu::aboutToShow, this, [this, shellMenu] {
+        fillShellMenu(shellMenu);
+    });
+    shells->setMenu(shellMenu);
     auto *hide = new QToolButton(corner);
     hide->setIcon(QIcon::fromTheme(QStringLiteral("go-down"), QIcon::fromTheme(QStringLiteral("arrow-down"))));
-    hide->setToolTip(QStringLiteral("Nascondi pannello (Ctrl+J)"));
+    hide->setToolTip(tr("Hide Panel (Ctrl+J)"));
     hide->setAutoRaise(true);
     cl->addWidget(add);
+    cl->addWidget(shells);
     cl->addWidget(hide);
     m_tabs->setCornerWidget(corner);
 
@@ -93,23 +195,61 @@ bool TerminalPanel::hasTerminals() const
     return m_tabs->count() > 0;
 }
 
-void TerminalPanel::newTerminal(const QString &dir)
+void TerminalPanel::fillShellMenu(QMenu *menu)
 {
+    menu->clear();
+    const QList<Shell> shells = availableShells();
+    const QString setting = shellSetting();
+    const QString current = QFileInfo(resolveShell(setting)).canonicalFilePath();
+    const QIcon icon = QIcon::fromTheme(QStringLiteral("utilities-terminal"));
+
+    for (const Shell &shell : shells) {
+        const QString text = shell.path == current ? tr("%1  (default)").arg(shell.name) : shell.name;
+        connect(menu->addAction(icon, text), &QAction::triggered, this, [this, path = shell.path] {
+            newTerminal(QString(), path);
+        });
+    }
+
+    // The default shell is saved in lieve.conf ([terminal] shell=) and used by
+    // every new terminal, in every window.
+    menu->addSeparator();
+    QMenu *defaults = menu->addMenu(tr("Default Shell"));
+    auto *group = new QActionGroup(defaults);
+    const auto addChoice = [&](const QString &text, const QString &value, bool checked) {
+        QAction *action = defaults->addAction(text);
+        action->setCheckable(true);
+        action->setChecked(checked);
+        group->addAction(action);
+        connect(action, &QAction::triggered, this, [value] {
+            Lieve::setConfigValue(QStringLiteral("terminal"), QStringLiteral("shell"), value,
+                                  tr("Shell for new terminals: auto (your login shell) or fish, zsh, bash or a path."));
+        });
+    };
+    const bool automatic = setting.isEmpty() || setting == QLatin1String("auto");
+    addChoice(tr("Automatic (%1, your login shell)").arg(QFileInfo(loginShell()).fileName()), QStringLiteral("auto"), automatic);
+    defaults->addSeparator();
+    for (const Shell &shell : shells) {
+        addChoice(shell.name, shell.name, !automatic && shell.path == current);
+    }
+}
+
+void TerminalPanel::newTerminal(const QString &dir, const QString &shellPath)
+{
+    const QString shell = shellPath.isEmpty() ? resolveShell(shellSetting()) : shellPath;
     const QString workDir = !dir.isEmpty() ? dir : (!m_dir.isEmpty() ? m_dir : QDir::homePath());
     const auto result = KPluginFactory::instantiatePlugin<KParts::ReadOnlyPart>(KPluginMetaData(QStringLiteral("kf6/parts/konsolepart")), this);
     if (!result.plugin) {
-        auto *error = new QLabel(QStringLiteral("Impossibile caricare il terminale di Konsole.\n%1\n\nInstalla Konsole: pacman -S konsole")
+        auto *error = new QLabel(tr("Could not load the Konsole terminal.\n%1\n\nInstall Konsole: pacman -S konsole")
                                      .arg(result.errorString),
                                  m_tabs);
         error->setAlignment(Qt::AlignCenter);
-        m_tabs->setCurrentIndex(m_tabs->addTab(error, QIcon(), QStringLiteral("Errore")));
+        m_tabs->setCurrentIndex(m_tabs->addTab(error, QIcon(), tr("Error")));
         return;
     }
 
     KParts::ReadOnlyPart *part = result.plugin;
     QWidget *widget = part->widget();
-    const QString shell = QFileInfo(qEnvironmentVariable("SHELL", QStringLiteral("sh"))).fileName();
-    const int index = m_tabs->addTab(widget, QIcon::fromTheme(QStringLiteral("utilities-terminal")), shell);
+    const int index = m_tabs->addTab(widget, QIcon::fromTheme(QStringLiteral("utilities-terminal")), QFileInfo(shell).fileName());
     m_tabs->setCurrentIndex(index);
     m_parts.insert(widget, part);
 
@@ -133,8 +273,10 @@ void TerminalPanel::newTerminal(const QString &dir)
     });
 
     if (auto *terminal = qobject_cast<TerminalInterface *>(part)) {
-        if (!Lieve::Theme::konsoleProfile().isEmpty()) {
-            terminal->setCurrentProfile(Lieve::Theme::konsoleProfile()); // same colours as the editor
+        // The profile runs the chosen shell, with the editor's colours.
+        const QString profile = Lieve::Theme::konsoleProfile(shell);
+        if (profile.isEmpty() || !terminal->setCurrentProfile(profile)) {
+            qWarning("lieve: Konsole profile for %s not applied", qPrintable(shell));
         }
         terminal->showShellInDir(workDir);
     }

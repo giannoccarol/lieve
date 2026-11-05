@@ -7,6 +7,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QKeyEvent>
 #include <QLineEdit>
@@ -33,7 +34,7 @@ enum Role {
     PinnedRole,
 };
 
-// Two-line row:  [icon]  Name  📌                      2 ore fa / ● aperto
+// Two-line row:  [icon]  Name  📌                   2 hours ago / ● open
 //                        ~/path/to/project                       develop
 class ProjectDelegate : public QStyledItemDelegate
 {
@@ -77,7 +78,7 @@ public:
         p->save();
         // Right column
         const bool open = index.data(OpenRole).toBool();
-        const QString right1 = open ? QStringLiteral("● aperto") : index.data(TimeRole).toString();
+        const QString right1 = open ? QCoreApplication::translate("ProjectList", "● open") : index.data(TimeRole).toString();
         const QString right2 = index.data(BranchRole).toString();
         const int rightWidth = std::max(fm.horizontalAdvance(right1), fm.horizontalAdvance(right2));
         p->setFont(opt.font);
@@ -114,7 +115,7 @@ ProjectList::ProjectList(QWidget *parent)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(6);
     m_filter = new QLineEdit(this);
-    m_filter->setPlaceholderText(QStringLiteral("Cerca progetto…"));
+    m_filter->setPlaceholderText(tr("Search projects…"));
     m_filter->setClearButtonEnabled(true);
     m_list = new QListWidget(this);
     m_list->setFrameShape(QFrame::NoFrame);
@@ -235,12 +236,12 @@ void ProjectList::showMenu(const QPoint &pos)
     const bool recent = pinned || !item->data(TimeRole).toString().isEmpty();
 
     QMenu menu(this);
-    menu.addAction(QIcon::fromTheme(QStringLiteral("document-open")), QStringLiteral("Apri"), this, [this, path] {
+    menu.addAction(QIcon::fromTheme(QStringLiteral("document-open")), tr("Open"), this, [this, path] {
         Q_EMIT projectChosen(path, false);
     });
     menu.addSeparator();
     menu.addAction(QIcon::fromTheme(pinned ? QStringLiteral("window-unpin") : QStringLiteral("window-pin")),
-                   pinned ? QStringLiteral("Togli dai fissati") : QStringLiteral("Fissa in alto"),
+                   pinned ? tr("Unpin") : tr("Pin to Top"),
                    this,
                    [this, path, pinned] {
                        Projects::setPinned(path, !pinned);
@@ -248,17 +249,17 @@ void ProjectList::showMenu(const QPoint &pos)
                        reload();
                    });
     if (recent) {
-        menu.addAction(QIcon::fromTheme(QStringLiteral("list-remove")), QStringLiteral("Rimuovi dai recenti"), this, [this, path] {
+        menu.addAction(QIcon::fromTheme(QStringLiteral("list-remove")), tr("Remove from Recent"), this, [this, path] {
             Projects::forget(path);
             JumpList::update();
             reload();
         });
     }
     menu.addSeparator();
-    menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), QStringLiteral("Copia percorso"), this, [path] {
+    menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), tr("Copy Path"), this, [path] {
         QApplication::clipboard()->setText(path);
     });
-    menu.addAction(QIcon::fromTheme(QStringLiteral("system-file-manager")), QStringLiteral("Mostra nel file manager"), this, [path] {
+    menu.addAction(QIcon::fromTheme(QStringLiteral("system-file-manager")), tr("Reveal in File Manager"), this, [path] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(path));
     });
     menu.exec(m_list->viewport()->mapToGlobal(pos));

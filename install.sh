@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Installa o aggiorna Lieve compilandolo dai sorgenti, in ~/.local (nessun sudo).
+# Installs or updates Lieve by building it from source, into ~/.local (no sudo).
 #
-#   bash install.sh            ultima release
-#   bash install.sh v0.1.3     una release precisa
+#   bash install.sh            latest release
+#   bash install.sh v0.1.3     a specific release
 #   PREFIX=/opt/lieve bash install.sh
 set -euo pipefail
 
@@ -15,18 +15,25 @@ for tool in git make g++ pkg-config; do
     command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
 pkg-config --exists Qt6Widgets Qt6DBus Qt6Network 2>/dev/null || missing+=("Qt 6 (widgets, dbus, network)")
-[ -d /usr/include/KF6/KTextEditor ] || missing+=("KDE Frameworks 6: KTextEditor e KParts")
-command -v konsole >/dev/null 2>&1 || missing+=("konsole (per il terminale integrato)")
-command -v rg >/dev/null 2>&1 || missing+=("ripgrep (per la ricerca)")
+[ -d /usr/include/KF6/KTextEditor ] || missing+=("KDE Frameworks 6 (KTextEditor, KParts)")
+command -v konsole >/dev/null 2>&1 || missing+=("konsole (for the built-in terminal)")
+command -v rg >/dev/null 2>&1 || missing+=("ripgrep (for search)")
 
 if [ ${#missing[@]} -gt 0 ]; then
-    echo "Mancano: ${missing[*]}"
+    echo "Missing: ${missing[*]}"
     echo
     echo "Arch / CachyOS / Manjaro:"
-    echo "  sudo pacman -S --needed base-devel git qt6-base qt6-svg ktexteditor kparts kdbusaddons kwindowsystem syntax-highlighting konsole ripgrep"
+    echo "  sudo pacman -S --needed base-devel git qt6-base qt6-svg qt6-tools ktexteditor kparts kdbusaddons kwindowsystem syntax-highlighting ki18n konsole ripgrep"
     echo "Fedora:"
-    echo "  sudo dnf install gcc-c++ make git qt6-qtbase-devel qt6-qtsvg-devel kf6-ktexteditor-devel kf6-kparts-devel kf6-kdbusaddons-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel konsole ripgrep"
+    echo "  sudo dnf install gcc-c++ make git qt6-qtbase-devel qt6-qtsvg-devel qt6-linguist kf6-ktexteditor-devel kf6-kparts-devel kf6-kdbusaddons-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel kf6-ki18n-devel konsole ripgrep"
     exit 1
+fi
+
+qtbin="$(pkg-config --variable=bindir Qt6Core 2>/dev/null || true)"
+if ! { [ -x "$qtbin/lrelease" ] || command -v lrelease-qt6 >/dev/null 2>&1 || command -v lrelease >/dev/null 2>&1; }; then
+    echo "Note: Qt's lrelease was not found (package qt6-tools, or qt6-linguist on Fedora):"
+    echo "Lieve will be built without translations, in English only."
+    echo
 fi
 
 if [ ! -d "$SRC/.git" ]; then
@@ -40,17 +47,17 @@ TAG="${1:-}"
 if [ -z "$TAG" ]; then
     TAG="$(git tag --list 'v*' --sort=-version:refname | head -n1)"
 fi
-[ -n "$TAG" ] || { echo "Nessuna release trovata."; exit 1; }
+[ -n "$TAG" ] || { echo "No release found."; exit 1; }
 
-echo "Installo Lieve $TAG in $PREFIX ..."
+echo "Installing Lieve $TAG into $PREFIX ..."
 git checkout --quiet --force "$TAG"
 make -j"$(nproc)"
 make install PREFIX="$PREFIX"
 
 echo
-echo "Fatto. Avvia Lieve dal menu delle applicazioni oppure con: $PREFIX/bin/lieve"
+echo "Done. Start Lieve from the application menu or with: $PREFIX/bin/lieve"
 case ":$PATH:" in
     *":$PREFIX/bin:"*) ;;
-    *) echo "(Per usare il comando 'lieve' aggiungi $PREFIX/bin al PATH.)" ;;
+    *) echo "(To use the 'lieve' command, add $PREFIX/bin to your PATH.)" ;;
 esac
-echo "Gli aggiornamenti successivi arrivano da Lieve stesso: compare \"Aggiornamento\" nella barra di stato."
+echo "Later updates come from Lieve itself: an update button appears in the status bar."

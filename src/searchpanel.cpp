@@ -72,11 +72,11 @@ SearchPanel::SearchPanel(QWidget *parent)
     layout->setSpacing(6);
     auto *titleRow = new QHBoxLayout;
     titleRow->setContentsMargins(4, 0, 0, 0);
-    titleRow->addWidget(sectionTitle(QStringLiteral("CERCA"), this));
+    titleRow->addWidget(sectionTitle(tr("SEARCH"), this));
     titleRow->addStretch(1);
     m_more = new QToolButton(this);
     m_more->setText(QStringLiteral("⋯"));
-    m_more->setToolTip(QStringLiteral("Mostra file da includere/escludere"));
+    m_more->setToolTip(tr("Toggle Search Details"));
     m_more->setCheckable(true);
     m_more->setAutoRaise(true);
     titleRow->addWidget(m_more);
@@ -85,14 +85,14 @@ SearchPanel::SearchPanel(QWidget *parent)
     auto *queryRow = new QHBoxLayout;
     queryRow->setSpacing(2);
     m_query = new QLineEdit(this);
-    m_query->setPlaceholderText(QStringLiteral("Cerca"));
+    m_query->setPlaceholderText(tr("Search"));
     m_query->setClearButtonEnabled(true);
-    m_case = toggle(QStringLiteral("Aa"), QStringLiteral("Maiuscole/minuscole"), this);
-    m_word = toggle(QStringLiteral("ab"), QStringLiteral("Parola intera"), this);
+    m_case = toggle(QStringLiteral("Aa"), tr("Match Case"), this);
+    m_word = toggle(QStringLiteral("ab"), tr("Match Whole Word"), this);
     QFont underlined = m_word->font();
     underlined.setUnderline(true);
     m_word->setFont(underlined);
-    m_regex = toggle(QStringLiteral(".*"), QStringLiteral("Espressione regolare"), this);
+    m_regex = toggle(QStringLiteral(".*"), tr("Use Regular Expression"), this);
     queryRow->addWidget(m_query, 1);
     queryRow->addWidget(m_case);
     queryRow->addWidget(m_word);
@@ -104,9 +104,9 @@ SearchPanel::SearchPanel(QWidget *parent)
     fl->setContentsMargins(0, 0, 0, 0);
     fl->setSpacing(4);
     m_include = new QLineEdit(m_filters);
-    m_include->setPlaceholderText(QStringLiteral("File da includere (es. src, *.ts, src/**/*.html)"));
+    m_include->setPlaceholderText(tr("Files to include (e.g. src, *.ts, src/**/*.html)"));
     m_exclude = new QLineEdit(m_filters);
-    m_exclude->setPlaceholderText(QStringLiteral("File da escludere (es. *.spec.ts, dist)"));
+    m_exclude->setPlaceholderText(tr("Files to exclude (e.g. *.spec.ts, dist)"));
     fl->addWidget(m_include);
     fl->addWidget(m_exclude);
     m_filters->hide();
@@ -263,10 +263,10 @@ void SearchPanel::startSearch()
     });
     connect(m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
-            m_status->setText(QStringLiteral("ripgrep (rg) non trovato: installalo con «pacman -S ripgrep»."));
+            m_status->setText(tr("ripgrep (rg) not found: install it with “pacman -S ripgrep”."));
         }
     });
-    m_status->setText(QStringLiteral("Ricerca in corso…"));
+    m_status->setText(tr("Searching…"));
     m_proc->start(QStringLiteral("rg"), args);
 }
 
@@ -400,13 +400,21 @@ void SearchPanel::finished(int exitCode)
     }
     if (m_matchCount == 0) {
         // Exit code 2 with no results usually means an invalid regular expression.
-        m_status->setText(error.isEmpty() ? QStringLiteral("Nessun risultato.") : error.section(QLatin1Char('\n'), 0, 2));
+        m_status->setText(error.isEmpty() ? tr("No results found.") : error.section(QLatin1Char('\n'), 0, 2));
         return;
     }
     m_results->sortItems(0, Qt::AscendingOrder);
-    QString status = QStringLiteral("%1 risultati in %2 file").arg(m_matchCount).arg(m_fileItems.size());
+    const int files = int(m_fileItems.size());
+    QString status;
     if (m_truncated) {
-        status += QStringLiteral(" (limite raggiunto, restringi la ricerca)");
+        status = files == 1 ? tr("%1 results in 1 file (limit reached, narrow your search)").arg(m_matchCount)
+                            : tr("%1 results in %2 files (limit reached, narrow your search)").arg(m_matchCount).arg(files);
+    } else if (m_matchCount == 1) {
+        status = tr("1 result in 1 file");
+    } else if (files == 1) {
+        status = tr("%1 results in 1 file").arg(m_matchCount);
+    } else {
+        status = tr("%1 results in %2 files").arg(m_matchCount).arg(files);
     }
     m_status->setText(status);
 }
