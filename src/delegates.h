@@ -13,16 +13,20 @@ enum ItemRole {
     LengthRole,
     RangesRole, // QVariantList of QPoint(start, length) to highlight in the text
     CountRole, // badge on file rows (0 = none)
+    ShortcutRole, // command rows: key sequence drawn as key caps on the right
+    NoteRole, // command rows: dim note at the far right ("recently used")
+    SeparatorRole, // command rows: a line above the row
 };
 
 enum ItemKind {
     FileItem = 0,
     MatchItem = 1,
+    CommandItem = 2,
 };
 }
 
-// Paints "name  dim/folder  [count]" rows and search-match rows with the
-// matched text highlighted.
+// Paints "name  dim/folder  [count]" rows, search-match rows with the
+// matched text highlighted and command palette rows.
 class FileItemDelegate : public QStyledItemDelegate
 {
 public:

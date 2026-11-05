@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include "blame.h"
+#include "commandpalette.h"
 #include "explorer.h"
 #include "git.h"
 #include "gitpanel.h"
@@ -747,29 +748,35 @@ void MainWindow::buildActions()
             m_quickOpen->popup(m_mru);
         }
     });
-    addShortcut(tr("Explorer"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E)}, true, [this] {
+    QAction *paletteAction = addShortcut(tr("Command Palette…"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P), QKeySequence(Qt::Key_F1)}, true, [this] {
+        m_quickOpen->popup(m_mru, QStringLiteral(">"));
+    });
+    QAction *goToLineAction = addShortcut(tr("Go to Line/Column…"), {QKeySequence(Qt::CTRL | Qt::Key_G)}, false, [this] {
+        m_quickOpen->popup(m_mru, QStringLiteral(":"));
+    });
+    QAction *explorerAction = addShortcut(tr("Explorer"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E)}, true, [this] {
         showSidePage(ExplorerPage, false);
         m_explorer->focusTree();
     });
-    addShortcut(tr("Find in Files"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F)}, true, [this] {
+    QAction *findInFilesAction = addShortcut(tr("Find in Files"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F)}, true, [this] {
         showSearch(selectedText());
     });
     QAction *sourceControlAction = addShortcut(tr("Source Control"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G)}, true, [this] {
         showSidePage(GitPage, false);
         m_gitPanel->focusMessage();
     });
-    addShortcut(tr("Toggle Side Bar"), {QKeySequence(Qt::CTRL | Qt::Key_B)}, false, [this] {
+    QAction *sideBarAction = addShortcut(tr("Toggle Side Bar"), {QKeySequence(Qt::CTRL | Qt::Key_B)}, false, [this] {
         setSidebarVisible(m_side->isHidden());
     });
-    addShortcut(tr("Toggle Panel"), {QKeySequence(Qt::CTRL | Qt::Key_J)}, true, [this] {
+    QAction *panelAction = addShortcut(tr("Toggle Panel"), {QKeySequence(Qt::CTRL | Qt::Key_J)}, true, [this] {
         setTerminalVisible(m_terminal->isHidden());
     });
-    addShortcut(tr("Terminal"),
-                {QKeySequence(Qt::CTRL | Qt::Key_QuoteLeft), QKeySequence(Qt::CTRL | Qt::Key_Ograve)},
-                true,
-                [this] {
-                    toggleTerminalFocus();
-                });
+    QAction *terminalAction = addShortcut(tr("Terminal"),
+                                          {QKeySequence(Qt::CTRL | Qt::Key_QuoteLeft), QKeySequence(Qt::CTRL | Qt::Key_Ograve)},
+                                          true,
+                                          [this] {
+                                              toggleTerminalFocus();
+                                          });
     QAction *projects = addShortcut(tr("Projects…"), {QKeySequence(Qt::CTRL | Qt::Key_R)}, false, [this] {
         if (m_root.isEmpty()) {
             focusChooser();
@@ -795,22 +802,22 @@ void MainWindow::buildActions()
     QAction *saveAllAction = addShortcut(tr("Save All"), {QKeySequence(QStringLiteral("Ctrl+K, S"))}, false, [this] {
         saveAll();
     });
-    addShortcut(tr("Close Editor"), {QKeySequence(Qt::CTRL | Qt::Key_W), QKeySequence(Qt::CTRL | Qt::Key_F4)}, false, [this] {
+    QAction *closeEditorAction = addShortcut(tr("Close Editor"), {QKeySequence(Qt::CTRL | Qt::Key_W), QKeySequence(Qt::CTRL | Qt::Key_F4)}, false, [this] {
         if (KTextEditor::View *view = currentView()) {
             closeView(view);
         }
     });
-    addShortcut(tr("Next Editor"), {QKeySequence(Qt::CTRL | Qt::Key_Tab), QKeySequence(Qt::CTRL | Qt::Key_PageDown)}, false, [this] {
+    QAction *nextEditorAction = addShortcut(tr("Next Editor"), {QKeySequence(Qt::CTRL | Qt::Key_Tab), QKeySequence(Qt::CTRL | Qt::Key_PageDown)}, false, [this] {
         cycleTab(1);
     });
-    addShortcut(tr("Previous Editor"),
-                {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Backtab),
-                 QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Tab),
-                 QKeySequence(Qt::CTRL | Qt::Key_PageUp)},
-                false,
-                [this] {
-                    cycleTab(-1);
-                });
+    QAction *previousEditorAction = addShortcut(tr("Previous Editor"),
+                                                {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Backtab),
+                                                 QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Tab),
+                                                 QKeySequence(Qt::CTRL | Qt::Key_PageUp)},
+                                                false,
+                                                [this] {
+                                                    cycleTab(-1);
+                                                });
     QAction *formatAction = addShortcut(tr("Format Document"),
                                         {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I), QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_F)},
                                         false,
@@ -854,6 +861,19 @@ void MainWindow::buildActions()
     settingsAction->setIcon(QIcon::fromTheme(QStringLiteral("configure")));
     quitAction->setIcon(QIcon::fromTheme(QStringLiteral("application-exit")));
 
+    // Command palette prefixes, as in VS Code ("View: Toggle Panel").
+    for (QAction *a : {explorerAction, sourceControlAction, sideBarAction, panelAction, terminalAction, closeEditorAction, nextEditorAction, previousEditorAction}) {
+        setCommandCategory(a, CommandCategory::View);
+    }
+    for (QAction *a : {projects, openFolderAction, newWindow, newFile, openFileAction, saveAllAction, saveRaw, closeProjectAction, quitAction}) {
+        setCommandCategory(a, CommandCategory::File);
+    }
+    setCommandCategory(findInFilesAction, CommandCategory::Search);
+    setCommandCategory(newTerm, CommandCategory::Terminal);
+    setCommandCategory(settingsAction, CommandCategory::Preferences);
+
+    m_mainMenu->addAction(paletteAction);
+    m_mainMenu->addSeparator();
     m_mainMenu->addAction(projects);
     m_mainMenu->addAction(openFolderAction);
     m_mainMenu->addAction(newWindow);
@@ -873,6 +893,33 @@ void MainWindow::buildActions()
     m_mainMenu->addAction(quitAction);
     connect(m_mainMenu, &QMenu::aboutToShow, this, [this, closeProjectAction] {
         closeProjectAction->setEnabled(!m_root.isEmpty());
+    });
+
+    // Command palette: everything above, the Git panel's menus and the
+    // current editor's own actions, gathered each time it opens.
+    m_quickOpen->setCommandSource([this, paletteAction, goToLineAction] {
+        QList<Command> commands;
+        addMenuCommands(commands, m_mainMenu);
+        addCommands(commands, actions());
+        if (m_git->isRepository()) {
+            const auto menus = m_gitPanel->findChildren<QMenu *>(Qt::FindDirectChildrenOnly);
+            for (QMenu *menu : menus) {
+                addMenuCommands(commands, menu, CommandCategory::Git, [this] {
+                    showSidePage(GitPage, false); // shows progress and asks for the commit message
+                });
+            }
+        }
+        KTextEditor::View *view = currentView();
+        if (view) {
+            addEditorCommands(commands, view);
+        }
+        commands.removeIf([paletteAction, goToLineAction, view](const Command &c) {
+            return c.action == paletteAction || (c.action == goToLineAction && !view);
+        });
+        return commands;
+    });
+    m_quickOpen->setEditorSource([this] {
+        return currentView();
     });
 
     m_terminal->setReservedShortcuts(m_terminalKeys);
@@ -1713,9 +1760,7 @@ void MainWindow::onStatusClicked(const QString &name)
         menu->exec(at - QPoint(0, menu->sizeHint().height() + 2));
     };
     if (name == QLatin1String("cursor")) {
-        if (QAction *action = view->actionCollection()->action(QStringLiteral("go_goto_line"))) {
-            action->trigger();
-        }
+        m_quickOpen->popup(m_mru, QStringLiteral(":"));
     } else if (name == QLatin1String("prettier")) {
         formatDocument(view->document(), false);
     } else if (name == QLatin1String("indent")) {

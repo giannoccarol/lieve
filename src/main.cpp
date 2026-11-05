@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QIcon>
 #include <QElapsedTimer>
+#include <QKeyEvent>
 #include <QLibraryInfo>
 #include <QLineEdit>
 #include <QMenu>
@@ -70,6 +71,34 @@ void setupTestHooks(QApplication &app)
             QTimer::singleShot(700, window, [window, quickOpen] {
                 if (auto *edit = window->findChild<QuickOpen *>()->findChild<QLineEdit *>()) {
                     edit->setText(quickOpen);
+                    if (qEnvironmentVariableIsSet("LIEVE_TEST_QUICKOPEN_ACCEPT")) { // then press Enter
+                        QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+                        QCoreApplication::sendEvent(edit, &enter);
+                    }
+                }
+            });
+        }
+        if (qEnvironmentVariableIsSet("LIEVE_TEST_PALETTE")) { // command palette with ">" and this text
+            const QString query = qEnvironmentVariable("LIEVE_TEST_PALETTE");
+            const auto actions = window->actions();
+            for (QAction *action : actions) {
+                if (action->shortcuts().contains(QKeySequence(Qt::Key_F1))) {
+                    action->trigger();
+                }
+            }
+            QTimer::singleShot(700, window, [window, query] {
+                auto *edit = window->findChild<QuickOpen *>()->findChild<QLineEdit *>();
+                edit->setText(QLatin1Char('>') + query);
+                // LIEVE_TEST_PALETTE_ACCEPT: press Enter, then type its value in the list that follows
+                if (qEnvironmentVariableIsSet("LIEVE_TEST_PALETTE_ACCEPT")) {
+                    QTimer::singleShot(300, edit, [edit] {
+                        QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+                        QCoreApplication::sendEvent(edit, &enter);
+                        const QString then = qEnvironmentVariable("LIEVE_TEST_PALETTE_ACCEPT");
+                        if (!then.isEmpty() && edit->isVisible()) {
+                            edit->setText(then);
+                        }
+                    });
                 }
             });
         }
