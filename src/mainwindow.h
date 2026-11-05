@@ -27,6 +27,7 @@ namespace Lieve
 {
 class GitRepo;
 struct GitEntry;
+class LspManager;
 }
 class Explorer;
 class GitGutter;
@@ -202,6 +203,7 @@ private:
     QWidget *m_body = nullptr;
     TerminalPanel *m_terminal = nullptr;
     QuickOpen *m_quickOpen = nullptr;
+    Lieve::LspManager *m_lsp = nullptr; // language servers: definitions, problems, completion
     QFrame *m_switcher = nullptr;
     ProjectList *m_switcherList = nullptr;
 

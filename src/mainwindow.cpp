@@ -7,6 +7,7 @@
 #include "git.h"
 #include "gitgutter.h"
 #include "gitpanel.h"
+#include "lsp.h"
 #include "prettier.h"
 #include "projectlist.h"
 #include "projects.h"
@@ -322,6 +323,9 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    // Language servers stop, and their underlines go while the documents live.
+    delete m_lsp;
+    m_lsp = nullptr;
     // The documents die after this body: their signals must not reach the
     // window any more (nor drop the hot exit backups).
     for (KTextEditor::Document *doc : documents()) {
@@ -362,6 +366,7 @@ void MainWindow::buildUi()
     m_status = new StatusBar(central);
     m_status->addItem(QStringLiteral("branch"), false);
     m_status->addItem(QStringLiteral("sync"), false);
+    m_status->addItem(QStringLiteral("problems"), false);
     for (const char *name : {"blame", "cursor", "indent", "encoding", "eol", "mode", "eslint", "prettier", "update"}) {
         m_status->addItem(QLatin1String(name), true);
     }
@@ -461,6 +466,7 @@ void MainWindow::buildUi()
     central->installEventFilter(this); // keeps overlays placed on resize
 
     m_quickOpen = new QuickOpen(central);
+    m_lsp = new LspManager(this, m_status, central);
     buildSwitcher();
 
     connect(m_actExplorer, &QAction::triggered, this, [this] {
@@ -903,6 +909,11 @@ void MainWindow::buildActions()
     QAction *quitAction = addShortcut(tr("Exit"), {QKeySequence(Qt::CTRL | Qt::Key_Q)}, false, [] {
         WindowManager::instance().closeAll();
     });
+    // Go to Definition (F12), Back (Alt+Left), Go to Symbol (Ctrl+Shift+O), problems (F8)
+    const QList<LspManager::Shortcut> lspShortcuts = m_lsp->shortcuts();
+    for (const LspManager::Shortcut &shortcut : lspShortcuts) {
+        addShortcut(shortcut.text, shortcut.keys, false, shortcut.slot);
+    }
 
     quickOpenAction->setObjectName(QStringLiteral("actionQuickOpen"));
     sourceControlAction->setObjectName(QStringLiteral("actionSourceControl"));
@@ -996,6 +1007,7 @@ void MainWindow::setProject(const QString &dir)
     m_quickOpen->setRoot(m_root);
     m_terminal->setWorkingDirectory(m_root);
     m_git->setDirectory(m_root);
+    m_lsp->setRoot(m_root);
 
     if (!m_gitWatcher.directories().isEmpty()) {
         m_gitWatcher.removePaths(m_gitWatcher.directories());
@@ -1039,6 +1051,7 @@ bool MainWindow::closeProject()
     m_search->setRoot(QString());
     m_quickOpen->setRoot(QString());
     m_git->setDirectory(QString());
+    m_lsp->setRoot(QString());
     if (!m_gitWatcher.directories().isEmpty()) {
         m_gitWatcher.removePaths(m_gitWatcher.directories());
     }
@@ -1374,6 +1387,7 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc, TabView *grou
         if (GitGutter *gutter = m_gutters.value(doc)) {
             gutter->addView(view);
         }
+        m_lsp->addView(view);
         group->insertTab(group->count() == 0 ? 0 : group->currentIndex() + 1, view, QString());
         updateTabTitles();
         updateEditorPage();
@@ -1448,6 +1462,8 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc, TabView *grou
             d->setProperty("lieveDiskTime", QFileInfo(path).lastModified().toMSecsSinceEpoch());
         }
     });
+    m_lsp->addDocument(doc);
+    m_lsp->addView(view);
     const int index = group->count() == 0 ? 0 : group->currentIndex() + 1; // next to the current tab, like VS Code
     group->insertTab(index, view, QString());
     updateTabTitles();
@@ -1560,6 +1576,7 @@ bool MainWindow::closeView(KTextEditor::View *view)
         }
         group->removeTab(group->indexOf(view));
         m_diffRanges.remove(doc); // coloured ranges are ours: delete them before the document
+        m_lsp->removeDocument(doc); // closes it in the language server, deletes its underlines
         delete doc; // deletes the view too
     }
     if (group->count() == 0) {
@@ -1688,6 +1705,7 @@ void MainWindow::onCurrentTabChanged()
     updateStatusBar();
     showBlame();
     KTextEditor::View *view = currentView();
+    m_lsp->setCurrentView(view);
     if (!view) {
         updateEditorPage();
         return;
@@ -2074,6 +2092,10 @@ void MainWindow::onStatusClicked(const QString &name)
         } else {
             m_git->sync();
         }
+        return;
+    }
+    if (name == QLatin1String("problems")) {
+        m_lsp->statusClicked();
         return;
     }
     KTextEditor::View *view = currentView();

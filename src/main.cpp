@@ -2,6 +2,7 @@
 #include "gitgutter.h"
 #include "gitpanel.h"
 #include "jumplist.h"
+#include "lsp.h"
 #include "mainwindow.h"
 #include "quickopen.h"
 #include "searchpanel.h"
@@ -570,6 +571,12 @@ void setupTestHooks(QApplication &app)
             QTimer::singleShot(at > 0 ? at : 1000, window, [window, gutterEdits] {
                 testGutter(window, gutterEdits);
             });
+        }
+        const QString lspTest = qEnvironmentVariable("LIEVE_TEST_LSP"); // steps, see LspManager::runTest()
+        if (!lspTest.isEmpty()) {
+            if (auto *lsp = window->findChild<Lieve::LspManager *>()) {
+                lsp->runTest(lspTest);
+            }
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_KEYS")) {
             if (auto *view = window->findChild<KTextEditor::View *>()) {
