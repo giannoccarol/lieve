@@ -167,7 +167,11 @@ const char kFormatSection[] = QT_TRANSLATE_NOOP("Settings", R"(
 ; Prettier on save: auto = like VS Code (the project's or your editor.formatOnSave),
 ; or true / false. Needs Prettier installed in the project (node_modules).
 onSave=auto
-; Minutes of inactivity after which the Prettier process exits.
+; ESLint fixes on save, before Prettier: auto = like VS Code (source.fixAll.eslint
+; in the project's or your editor.codeActionsOnSave), or true / false.
+; Needs ESLint installed in the project (node_modules).
+eslint=auto
+; Minutes of inactivity after which the Prettier (and ESLint) process exits.
 keepAliveMinutes=10
 ; Path to node. Empty = found automatically (PATH, mise, volta, nvm, fnm).
 node=

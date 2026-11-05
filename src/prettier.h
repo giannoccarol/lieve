@@ -23,15 +23,30 @@ struct FormatResult {
         Formatted,
         Failed, // syntax error, Node missing, timeout...
     };
-    Status status = Skipped;
-    QString text;
+    Status status = Skipped; // Prettier's
+    QString text; // the new text, when ESLint or Prettier changed it
     int cursor = -1; // new cursor offset in `text` (UTF-16, like QString)
-    QString message;
+    QString message; // Prettier's: why it skipped the file, or its error
+    Status eslint = Skipped; // ESLint's fixes (Formatted: it fixed something)
+    QString eslintMessage; // a sentence to show: ESLint's error or timeout
+
+    bool changed() const
+    {
+        return !text.isNull();
+    }
+};
+
+// What runs on a file: ESLint's fixes first, then Prettier (VS Code's order:
+// code actions on save, then format on save).
+struct FormatSteps {
+    bool eslint = false;
+    bool prettier = false;
 };
 
 // A long-running "node" process that keeps the project's own Prettier (and
 // its plugins) loaded, so formatting takes tens of milliseconds instead of a
-// second. Started on demand, stopped after some idle minutes.
+// second; the project's ESLint too, in a worker thread, when its fixes are
+// wanted. Started on demand, stopped after some idle minutes.
 class PrettierDaemon : public QObject
 {
 public:
@@ -66,26 +81,33 @@ private:
 // Format on save with Prettier, following the same rules VS Code uses:
 // "editor.formatOnSave" and "prettier.requireConfig" from the project's
 // .vscode/settings.json or the user's VS Code settings, overridable with
-// [format] onSave= in lieve.conf.
+// [format] onSave= in lieve.conf. Before it, ESLint's "fix all" when
+// "editor.codeActionsOnSave" asks for it ([format] eslint=).
 class Formatter
 {
 public:
     static Formatter &instance();
 
     bool formatOnSave(const QString &projectRoot) const;
+    bool fixOnSave(const QString &projectRoot) const;
     // Has a local Prettier (node_modules/prettier above the file)?
     bool available(const QString &file) const;
+    // Has a local ESLint, and is the file in a language it checks?
+    bool eslintAvailable(const QString &file, const QString &projectRoot) const;
+    // On save, or for the Format Document command: Prettier even without
+    // format on save, ESLint only when its fixes on save are on.
+    FormatSteps steps(const QString &file, const QString &projectRoot, bool onSave) const;
     // Starts the daemon and loads the plugins for this kind of file, so the
     // first save is fast. Asynchronous.
     void warmUp(const QString &file, const QString &text, const QString &projectRoot);
-    FormatResult format(const QString &file, const QString &text, int cursorOffset, const QString &projectRoot, int timeoutMs);
+    FormatResult format(const QString &file, const QString &text, int cursorOffset, const QString &projectRoot, FormatSteps steps, int timeoutMs);
 
 private:
     Formatter() = default;
-    QString prettierRoot(const QString &file) const;
+    QString packageRoot(const QString &file, const QString &package) const;
     QString nodeExecutable() const;
     PrettierDaemon *daemonFor(const QString &file, QString *error);
-    QJsonObject requestFor(const QString &file, const QString &text, int cursorOffset, const QString &projectRoot) const;
+    QJsonObject requestFor(const QString &file, const QString &text, int cursorOffset, const QString &projectRoot, FormatSteps steps, int eslintTimeoutMs) const;
 
     QHash<QString, PrettierDaemon *> m_daemons;
 };

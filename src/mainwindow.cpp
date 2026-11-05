@@ -337,7 +337,7 @@ void MainWindow::buildUi()
     m_status = new StatusBar(central);
     m_status->addItem(QStringLiteral("branch"), false);
     m_status->addItem(QStringLiteral("sync"), false);
-    for (const char *name : {"blame", "cursor", "indent", "encoding", "eol", "mode", "prettier", "update"}) {
+    for (const char *name : {"blame", "cursor", "indent", "encoding", "eol", "mode", "eslint", "prettier", "update"}) {
         m_status->addItem(QLatin1String(name), true);
     }
     m_status->item(QStringLiteral("update"))->setObjectName(QStringLiteral("statusAccent"));
@@ -1113,8 +1113,8 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc)
     connect(doc, &KTextEditor::Document::documentNameChanged, this, [this] {
         updateTabTitles();
     });
-    // Prettier: format just before writing; load it as soon as editing starts
-    // so that the first save is fast too.
+    // ESLint's fixes and Prettier: just before writing; load them as soon as
+    // editing starts so that the first save is fast too.
     connect(doc, &KTextEditor::Document::aboutToSave, this, [this](KTextEditor::Document *d) {
         formatDocument(d, true);
     });
@@ -1510,7 +1510,7 @@ void MainWindow::updateStatusBar()
     updateGitStatus();
     KTextEditor::View *view = currentView();
     if (!view) {
-        for (const char *name : {"blame", "cursor", "indent", "encoding", "eol", "mode", "prettier"}) {
+        for (const char *name : {"blame", "cursor", "indent", "encoding", "eol", "mode", "eslint", "prettier"}) {
             m_status->setItem(QLatin1String(name), QString());
         }
         return;
@@ -1540,6 +1540,11 @@ void MainWindow::updateStatusBar()
                           onSave ? tr("Prettier formats on save — click to format now") : tr("Prettier — click to format now"));
     } else {
         m_status->setItem(QStringLiteral("prettier"), QString());
+    }
+    if (!path.isEmpty() && Formatter::instance().steps(path, projectFor(path), true).eslint) {
+        m_status->setItem(QStringLiteral("eslint"), QStringLiteral("✓ ESLint"), QIcon(), tr("ESLint fixes problems on save — click to fix now"));
+    } else {
+        m_status->setItem(QStringLiteral("eslint"), QString());
     }
     if (path.isEmpty()) {
         m_status->setItem(QStringLiteral("blame"), QString());
@@ -1716,7 +1721,7 @@ void MainWindow::onStatusClicked(const QString &name)
         if (QAction *action = view->actionCollection()->action(QStringLiteral("go_goto_line"))) {
             action->trigger();
         }
-    } else if (name == QLatin1String("prettier")) {
+    } else if (name == QLatin1String("prettier") || name == QLatin1String("eslint")) {
         formatDocument(view->document(), false);
     } else if (name == QLatin1String("indent")) {
         KTextEditor::Document *doc = view->document();
@@ -1939,26 +1944,31 @@ void MainWindow::formatDocument(KTextEditor::Document *doc, bool onSave)
     }
     Formatter &formatter = Formatter::instance();
     const QString project = projectFor(path);
-    if (onSave && !formatter.formatOnSave(project)) {
-        return;
-    }
-    if (!onSave && !formatter.available(path)) {
-        showMessage(doc, tr("Prettier is not installed in this project (node_modules/prettier)."), KTextEditor::Message::Information);
+    // ESLint's fixes, when on for the project, then Prettier: the command
+    // gives the same text as saving.
+    const FormatSteps steps = formatter.steps(path, project, onSave);
+    if (!steps.eslint && !steps.prettier) {
+        if (!onSave) {
+            showMessage(doc, tr("Prettier is not installed in this project (node_modules/prettier)."), KTextEditor::Message::Information);
+        }
         return;
     }
     KTextEditor::View *view = (currentView() && currentView()->document() == doc) ? currentView() : doc->views().value(0);
     const QString text = doc->text();
     const int cursor = view ? offsetOf(text, view->cursorPosition()) : -1;
-    const FormatResult result = formatter.format(path, text, cursor, project, onSave ? 4000 : 10000);
+    const FormatResult result = formatter.format(path, text, cursor, project, steps, onSave ? 4000 : 10000);
+    if (result.changed()) {
+        applyFormatted(doc, view, text, result.text, result.cursor); // one undo step for both
+    }
+    if (result.eslint == FormatResult::Failed) {
+        showMessage(doc, result.eslintMessage, KTextEditor::Message::Warning);
+    }
     switch (result.status) {
-    case FormatResult::Formatted:
-        applyFormatted(doc, view, text, result.text, result.cursor);
-        break;
     case FormatResult::Failed:
         showMessage(doc, QStringLiteral("Prettier: %1").arg(result.message), KTextEditor::Message::Warning);
         break;
     case FormatResult::Skipped:
-        if (!onSave) {
+        if (!onSave && steps.prettier) {
             const QString why = result.message == QLatin1String("ignored")
                 ? tr("Not formatted: the file is excluded by .prettierignore.")
                 : result.message == QLatin1String("no-config") ? tr("Not formatted: no Prettier configuration found (prettier.requireConfig).")
@@ -1966,6 +1976,7 @@ void MainWindow::formatDocument(KTextEditor::Document *doc, bool onSave)
             showMessage(doc, why, KTextEditor::Message::Information);
         }
         break;
+    case FormatResult::Formatted:
     case FormatResult::Unchanged:
         break;
     }
