@@ -223,6 +223,7 @@ QTabBar::tab:hover:!selected { background: @hover; color: @fg; }
 QTabBar::close-button { image: url(@close); subcontrol-position: right; margin-left: 4px; padding: 1px; border-radius: 3px; }
 QTabBar::close-button:hover { background: @hoverStrong; }
 QTabBar QToolButton { background: transparent; border: none; }
+QSplitter#editorSplit::handle { background: @border; }
 QToolButton#tabClose { background: transparent; border: none; border-radius: 5px; padding: 0px; margin: 0px 2px 0px 6px; }
 QToolButton#tabClose:hover { background: @hoverStrong; }
 QScrollArea#tabScroll, QScrollArea#tabScroll > QWidget, QScrollArea#tabScroll > QWidget > QWidget { background: transparent; }

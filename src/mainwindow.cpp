@@ -309,8 +309,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_backupTimer.setInterval(1500);
     connect(&m_backupTimer, &QTimer::timeout, this, [this] {
         bool added = false;
-        for (int i = 0; i < m_tabs->count(); ++i) {
-            KTextEditor::Document *doc = viewAt(i)->document();
+        for (KTextEditor::Document *doc : documents()) {
             const bool had = doc->property("lieveBackup").isValid();
             backupDocument(doc);
             added = added || (!had && doc->property("lieveBackup").isValid());
@@ -325,8 +324,8 @@ MainWindow::~MainWindow()
 {
     // The documents die after this body: their signals must not reach the
     // window any more (nor drop the hot exit backups).
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        viewAt(i)->document()->disconnect(this);
+    for (KTextEditor::Document *doc : documents()) {
+        doc->disconnect(this);
     }
     // The editor views are child widgets and die after this body: detach the
     // inline blame providers while views and window are both still whole.
@@ -435,10 +434,12 @@ void MainWindow::buildUi()
     m_emptyPage = buildEmptyPage();
     m_editorStack->addWidget(m_chooserPage);
     m_editorStack->addWidget(m_emptyPage);
-    m_tabs = new TabView(m_editorStack);
-    m_tabs->tabBar()->installEventFilter(this);
-    m_tabs->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
-    m_editorStack->addWidget(m_tabs);
+    m_editorSplit = new QSplitter(Qt::Horizontal, m_editorStack);
+    m_editorSplit->setObjectName(QStringLiteral("editorSplit"));
+    m_editorSplit->setChildrenCollapsible(false);
+    m_editorSplit->setHandleWidth(1);
+    m_editorStack->addWidget(m_editorSplit);
+    m_tabs = createGroup();
     m_terminal = new TerminalPanel(m_rightSplit);
     m_terminal->setObjectName(QStringLiteral("terminalCard"));
     m_terminal->setMinimumHeight(80);
@@ -572,13 +573,6 @@ void MainWindow::buildUi()
             m_terminalHeight = m_rightSplit->sizes().value(1, m_terminalHeight);
         }
     });
-    connect(m_tabs, &TabView::tabCloseRequested, this, [this](int index) {
-        if (KTextEditor::View *view = viewAt(index)) {
-            closeView(view);
-        }
-    });
-    connect(m_tabs, &TabView::currentChanged, this, &MainWindow::onCurrentTabChanged);
-    connect(m_tabs->tabBar(), &QTabBar::customContextMenuRequested, this, &MainWindow::showTabMenu);
 }
 
 // Shown in windows without a project: pick one (Enter reopens the last one).
@@ -863,6 +857,19 @@ void MainWindow::buildActions()
                                                 [this] {
                                                     cycleTab(-1);
                                                 });
+    // Editor groups side by side, like VS Code.
+    QAction *splitAction = addShortcut(tr("Split Editor"), {QKeySequence(Qt::CTRL | Qt::Key_Backslash)}, false, [this] {
+        splitEditor();
+    });
+    QAction *focusFirst = addShortcut(tr("Focus First Editor Group"), {QKeySequence(Qt::CTRL | Qt::Key_1)}, false, [this] {
+        focusGroup(0);
+    });
+    QAction *focusSecond = addShortcut(tr("Focus Second Editor Group"), {QKeySequence(Qt::CTRL | Qt::Key_2)}, false, [this] {
+        focusGroup(1);
+    });
+    QAction *focusThird = addShortcut(tr("Focus Third Editor Group"), {QKeySequence(Qt::CTRL | Qt::Key_3)}, false, [this] {
+        focusGroup(2);
+    });
     addShortcut(tr("Go to Next Change"), {QKeySequence(Qt::ALT | Qt::Key_F3)}, false, [this] {
         goToChange(true);
     });
@@ -913,7 +920,8 @@ void MainWindow::buildActions()
     quitAction->setIcon(QIcon::fromTheme(QStringLiteral("application-exit")));
 
     // Command palette prefixes, as in VS Code ("View: Toggle Panel").
-    for (QAction *a : {explorerAction, sourceControlAction, sideBarAction, panelAction, terminalAction, closeEditorAction, nextEditorAction, previousEditorAction}) {
+    for (QAction *a : {explorerAction, sourceControlAction, sideBarAction, panelAction, terminalAction, closeEditorAction, nextEditorAction, previousEditorAction,
+                       splitAction, focusFirst, focusSecond, focusThird}) {
         setCommandCategory(a, CommandCategory::View);
     }
     for (QAction *a : {projects, openFolderAction, newWindow, newFile, openFileAction, saveAllAction, saveRaw, closeProjectAction, quitAction}) {
@@ -1160,15 +1168,159 @@ KTextEditor::View *MainWindow::currentView() const
     return qobject_cast<KTextEditor::View *>(m_tabs->currentWidget());
 }
 
+// The file's view in the active group, else in another group.
 KTextEditor::View *MainWindow::findView(const QString &path) const
 {
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        KTextEditor::View *view = viewAt(i);
-        if (view && localPath(view->document()) == path) {
-            return view;
+    KTextEditor::View *other = nullptr;
+    for (KTextEditor::View *view : allViews()) {
+        if (localPath(view->document()) == path) {
+            if (groupOf(view) == m_tabs) {
+                return view;
+            }
+            other = other ? other : view;
+        }
+    }
+    return other;
+}
+
+// ---------------------------------------------------------------------------
+// Editor groups (VS Code's split editor)
+
+TabView *MainWindow::createGroup()
+{
+    auto *group = new TabView(m_editorSplit);
+    group->tabBar()->installEventFilter(this);
+    group->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_editorSplit->addWidget(group);
+    m_groups.append(group);
+    connect(group, &TabView::tabCloseRequested, this, [this, group](int index) {
+        if (auto *view = qobject_cast<KTextEditor::View *>(group->widget(index))) {
+            closeView(view);
+        }
+    });
+    connect(group, &TabView::currentChanged, this, [this, group] {
+        if (group == m_tabs) {
+            onCurrentTabChanged();
+        }
+    });
+    connect(group->tabBar(), &QTabBar::customContextMenuRequested, this, [this, group](const QPoint &pos) {
+        setActiveGroup(group);
+        showTabMenu(pos);
+    });
+    return group;
+}
+
+// An emptied group goes away (the last one stays).
+void MainWindow::removeGroup(TabView *group)
+{
+    const qsizetype at = m_groups.indexOf(group);
+    if (at < 0 || m_groups.size() < 2) {
+        return;
+    }
+    m_groups.removeAt(at);
+    group->disconnect(this);
+    group->hide();
+    group->deleteLater(); // may be inside one of its own signals
+    if (m_tabs == group) {
+        m_tabs = m_groups.value(std::max<qsizetype>(0, at - 1));
+        onCurrentTabChanged();
+        if (KTextEditor::View *view = currentView()) {
+            view->setFocus();
+        }
+    }
+}
+
+void MainWindow::setActiveGroup(TabView *group)
+{
+    if (group && group != m_tabs && m_groups.contains(group)) {
+        m_tabs = group;
+        onCurrentTabChanged();
+    }
+}
+
+TabView *MainWindow::groupOf(KTextEditor::View *view) const
+{
+    for (TabView *group : m_groups) {
+        if (group->indexOf(view) >= 0) {
+            return group;
         }
     }
     return nullptr;
+}
+
+void MainWindow::activateView(KTextEditor::View *view)
+{
+    if (TabView *group = groupOf(view)) {
+        setActiveGroup(group);
+        group->setCurrentWidget(view);
+    }
+}
+
+QList<KTextEditor::View *> MainWindow::allViews() const
+{
+    QList<KTextEditor::View *> views;
+    for (TabView *group : m_groups) {
+        for (int i = 0; i < group->count(); ++i) {
+            if (auto *view = qobject_cast<KTextEditor::View *>(group->widget(i))) {
+                views << view;
+            }
+        }
+    }
+    return views;
+}
+
+QList<KTextEditor::Document *> MainWindow::documents() const
+{
+    QList<KTextEditor::Document *> docs;
+    for (KTextEditor::View *view : allViews()) {
+        if (!docs.contains(view->document())) {
+            docs << view->document();
+        }
+    }
+    return docs;
+}
+
+// Ctrl+\: the current file also in the group on the right (made if needed).
+void MainWindow::splitEditor()
+{
+    KTextEditor::View *view = currentView();
+    if (!view) {
+        return;
+    }
+    const qsizetype at = m_groups.indexOf(m_tabs);
+    TabView *target = at + 1 < m_groups.size() ? m_groups.at(at + 1) : createGroup();
+    KTextEditor::View *copy = nullptr;
+    for (int i = 0; i < target->count(); ++i) {
+        auto *other = qobject_cast<KTextEditor::View *>(target->widget(i));
+        if (other && other->document() == view->document()) {
+            copy = other;
+        }
+    }
+    setActiveGroup(target);
+    if (!copy) {
+        copy = addView(view->document(), target);
+    }
+    target->setCurrentWidget(copy);
+    copy->setCursorPosition(view->cursorPosition());
+    QList<int> sizes;
+    for (qsizetype i = 0; i < m_groups.size(); ++i) {
+        sizes << m_editorSplit->width() / int(m_groups.size());
+    }
+    m_editorSplit->setSizes(sizes);
+    copy->setFocus();
+}
+
+// Ctrl+1, Ctrl+2...: focus that group; the next one after the last splits.
+void MainWindow::focusGroup(int index)
+{
+    if (index < m_groups.size()) {
+        setActiveGroup(m_groups.at(index));
+        if (KTextEditor::View *view = currentView()) {
+            view->setFocus();
+        }
+    } else if (index == m_groups.size()) {
+        splitEditor();
+    }
 }
 
 KTextEditor::View *MainWindow::openFile(const QString &path, int line, int column, int selectLength)
@@ -1179,6 +1331,9 @@ KTextEditor::View *MainWindow::openFile(const QString &path, int line, int colum
     }
     const QString canonical = info.canonicalFilePath();
     KTextEditor::View *view = findView(canonical);
+    if (view && groupOf(view) != m_tabs) {
+        view = addView(view->document()); // open in another group: a view of it here too, like VS Code
+    }
     if (!view) {
         KTextEditor::Document *doc = KTextEditor::Editor::instance()->createDocument(this);
         doc->setConfigValue(QStringLiteral("auto-reload-on-external-changes"), true);
@@ -1205,10 +1360,25 @@ KTextEditor::View *MainWindow::openFile(const QString &path, int line, int colum
     return view;
 }
 
-KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc)
+KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc, TabView *group)
 {
-    KTextEditor::View *view = doc->createView(m_tabs);
+    if (!group) {
+        group = m_tabs;
+    }
+    KTextEditor::View *view = doc->createView(group);
     configureView(view);
+    connect(view, &KTextEditor::View::focusIn, this, [this, view] {
+        setActiveGroup(groupOf(view));
+    });
+    if (doc->views().size() > 1) { // already open in another group: the document is set up
+        if (GitGutter *gutter = m_gutters.value(doc)) {
+            gutter->addView(view);
+        }
+        group->insertTab(group->count() == 0 ? 0 : group->currentIndex() + 1, view, QString());
+        updateTabTitles();
+        updateEditorPage();
+        return view;
+    }
     connect(doc, &KTextEditor::Document::modifiedChanged, this, [this] {
         updateTabTitles();
         updateWindowTitle();
@@ -1278,8 +1448,8 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc)
             d->setProperty("lieveDiskTime", QFileInfo(path).lastModified().toMSecsSinceEpoch());
         }
     });
-    const int index = m_tabs->count() == 0 ? 0 : m_tabs->currentIndex() + 1; // next to the current tab, like VS Code
-    m_tabs->insertTab(index, view, QString());
+    const int index = group->count() == 0 ? 0 : group->currentIndex() + 1; // next to the current tab, like VS Code
+    group->insertTab(index, view, QString());
     updateTabTitles();
     updateEditorPage();
     return view;
@@ -1380,13 +1550,22 @@ void MainWindow::applyKeymap(KTextEditor::View *view)
 bool MainWindow::closeView(KTextEditor::View *view)
 {
     KTextEditor::Document *doc = view->document();
-    if (!doc->closeUrl()) { // asks to save if modified; false = cancelled
-        return false;
+    TabView *group = groupOf(view);
+    if (doc->views().size() > 1) { // still open in another group
+        group->removeTab(group->indexOf(view));
+        delete view;
+    } else {
+        if (!doc->closeUrl()) { // asks to save if modified; false = cancelled
+            return false;
+        }
+        group->removeTab(group->indexOf(view));
+        m_diffRanges.remove(doc); // coloured ranges are ours: delete them before the document
+        delete doc; // deletes the view too
     }
-    m_tabs->removeTab(m_tabs->indexOf(view));
-    m_diffRanges.remove(doc); // coloured ranges are ours: delete them before the document
-    delete doc; // deletes the view too
-    if (m_tabs->count() == 0) {
+    if (group->count() == 0) {
+        removeGroup(group);
+    }
+    if (allViews().isEmpty()) {
         updateEditorPage();
         updateWindowTitle();
     }
@@ -1395,8 +1574,9 @@ bool MainWindow::closeView(KTextEditor::View *view)
 
 bool MainWindow::closeAllViews()
 {
-    for (int i = m_tabs->count() - 1; i >= 0; --i) {
-        if (!closeView(viewAt(i))) {
+    const QList<KTextEditor::View *> views = allViews();
+    for (qsizetype i = views.size() - 1; i >= 0; --i) {
+        if (!closeView(views.at(i))) {
             return false;
         }
     }
@@ -1421,8 +1601,7 @@ void MainWindow::newUntitled()
 
 void MainWindow::saveAll()
 {
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        KTextEditor::Document *doc = viewAt(i)->document();
+    for (KTextEditor::Document *doc : documents()) {
         if (doc->isModified()) {
             doc->documentSave();
         }
@@ -1460,11 +1639,7 @@ void MainWindow::applySettings()
             font.setPointSizeF(size);
         }
     }
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        KTextEditor::View *view = viewAt(i);
-        if (!view) {
-            continue;
-        }
+    for (KTextEditor::View *view : allViews()) {
         view->setConfigValue(QStringLiteral("scrollbar-minimap"), c.value(QStringLiteral("editor/minimap"), false).toBool());
         view->setConfigValue(QStringLiteral("dynamic-word-wrap"), c.value(QStringLiteral("editor/wordWrap"), false).toBool());
         view->setConfigValue(QStringLiteral("font"), font);
@@ -1495,8 +1670,8 @@ void MainWindow::cycleTab(int step)
 
 void MainWindow::updateEditorPage()
 {
-    if (m_tabs->count() > 0) {
-        m_editorStack->setCurrentWidget(m_tabs);
+    if (!allViews().isEmpty()) {
+        m_editorStack->setCurrentWidget(m_editorSplit);
     } else if (m_root.isEmpty()) {
         if (m_editorStack->currentWidget() != m_chooserPage) {
             m_chooser->reload();
@@ -1531,13 +1706,12 @@ void MainWindow::onCurrentTabChanged()
 void MainWindow::updateTabTitles()
 {
     QHash<QString, int> nameCount;
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        if (KTextEditor::View *view = viewAt(i)) {
-            ++nameCount[documentTitle(view->document())];
-        }
+    for (KTextEditor::Document *doc : documents()) {
+        ++nameCount[documentTitle(doc)];
     }
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        KTextEditor::View *view = viewAt(i);
+    for (TabView *group : std::as_const(m_groups)) {
+    for (int i = 0; i < group->count(); ++i) {
+        auto *view = qobject_cast<KTextEditor::View *>(group->widget(i));
         if (!view) {
             continue;
         }
@@ -1552,10 +1726,11 @@ void MainWindow::updateTabTitles()
             title += QStringLiteral(" ●");
         }
         title.replace(QLatin1Char('&'), QStringLiteral("&&"));
-        m_tabs->setTabText(i, title);
-        m_tabs->setTabToolTip(i, path.isEmpty() ? name : prettyPath(path));
+        group->setTabText(i, title);
+        group->setTabToolTip(i, path.isEmpty() ? name : prettyPath(path));
         const QString iconName = doc->property("lieveIconName").toString();
-        m_tabs->setTabIcon(i, VsCodeIcons::instance().fileIcon(iconName.isEmpty() ? name : iconName));
+        group->setTabIcon(i, VsCodeIcons::instance().fileIcon(iconName.isEmpty() ? name : iconName));
+    }
     }
 }
 
@@ -1618,9 +1793,8 @@ void MainWindow::showTabMenu(const QPoint &pos)
 
 void MainWindow::onPathRenamed(const QString &oldPath, const QString &newPath)
 {
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        KTextEditor::View *view = viewAt(i);
-        KTextEditor::Document *doc = view->document();
+    for (KTextEditor::Document *doc : documents()) {
+        KTextEditor::View *view = doc->views().value(0);
         const QString path = localPath(doc);
         QString target;
         if (path == oldPath) {
@@ -1641,11 +1815,14 @@ void MainWindow::onPathRenamed(const QString &oldPath, const QString &newPath)
 
 void MainWindow::onPathRemoved(const QString &path)
 {
-    closeTabsWhere([this, path](int i) {
-        KTextEditor::Document *doc = viewAt(i)->document();
+    const QList<KTextEditor::View *> views = allViews();
+    for (qsizetype i = views.size() - 1; i >= 0; --i) {
+        KTextEditor::Document *doc = views.at(i)->document();
         const QString p = localPath(doc);
-        return !doc->isModified() && (p == path || p.startsWith(path + QLatin1Char('/')));
-    });
+        if (!doc->isModified() && (p == path || p.startsWith(path + QLatin1Char('/')))) {
+            closeView(views.at(i));
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1776,6 +1953,11 @@ DocumentBlame *MainWindow::blameFor(KTextEditor::Document *doc)
 void MainWindow::showBlame()
 {
     KTextEditor::View *view = currentView();
+    for (auto it = m_blameNotes.cbegin(); it != m_blameNotes.cend(); ++it) {
+        if (it.key() != view) { // only the active editor shows it (split groups)
+            static_cast<BlameNotes *>(it.value())->set(-1, QString());
+        }
+    }
     auto *notes = view ? static_cast<BlameNotes *>(m_blameNotes.value(view)) : nullptr;
     DocumentBlame *blame = view ? blameFor(view->document()) : nullptr;
     const int line = view ? view->cursorPosition().line() : -1;
@@ -2025,9 +2207,9 @@ void MainWindow::showDiff(const Lieve::GitEntry &entry, const QString &text)
     const QString body = text.isEmpty() ? tr("No text differences (binary file, or only the permissions changed).\n") : text;
 
     KTextEditor::View *view = nullptr;
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        if (viewAt(i) && viewAt(i)->document()->property("lieveDiffKey").toString() == key) {
-            view = viewAt(i);
+    for (KTextEditor::View *v : allViews()) {
+        if (v->document()->property("lieveDiffKey").toString() == key) {
+            view = v;
             break;
         }
     }
@@ -2049,7 +2231,7 @@ void MainWindow::showDiff(const Lieve::GitEntry &entry, const QString &text)
     doc->setModified(false);
     doc->setReadWrite(false);
     colorDiff(doc);
-    m_tabs->setCurrentWidget(view);
+    activateView(view);
     updateEditorPage();
     updateTabTitles();
     updateWindowTitle();
@@ -2218,10 +2400,15 @@ QString MainWindow::selectedText() const
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if (m_tabs && watched == m_tabs->tabBar() && event->type() == QEvent::MouseButtonRelease) {
+    for (TabView *group : std::as_const(m_groups)) {
+        if (watched != group->tabBar()) {
+            continue;
+        }
         auto *mouse = static_cast<QMouseEvent *>(event);
-        if (mouse->button() == Qt::MiddleButton) {
-            if (KTextEditor::View *view = viewAt(m_tabs->tabBar()->tabAt(mouse->position().toPoint()))) {
+        if (event->type() == QEvent::MouseButtonPress) {
+            setActiveGroup(group); // before the tab bar changes its current tab
+        } else if (event->type() == QEvent::MouseButtonRelease && mouse->button() == Qt::MiddleButton) {
+            if (auto *view = qobject_cast<KTextEditor::View *>(group->widget(group->tabBar()->tabAt(mouse->position().toPoint())))) {
                 closeView(view);
                 return true;
             }
@@ -2292,12 +2479,13 @@ void MainWindow::saveSession()
     QStringList cursors;
     QStringList backups;
     int activeIndex = -1;
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        KTextEditor::View *view = viewAt(i);
-        const QString path = localPath(view->document());
-        const QString backup = view->document()->property("lieveBackup").toString();
+    KTextEditor::View *current = currentView();
+    for (KTextEditor::Document *doc : documents()) { // split groups are not kept: each file once
+        KTextEditor::View *view = (current && current->document() == doc) ? current : doc->views().value(0);
+        const QString path = localPath(doc);
+        const QString backup = doc->property("lieveBackup").toString();
         if (!path.isEmpty() || !backup.isEmpty()) {
-            if (view == currentView()) {
+            if (view == current) {
                 activeIndex = int(files.size());
             }
             files << path;
@@ -2436,10 +2624,9 @@ void MainWindow::dropBackup(KTextEditor::Document *doc)
 bool MainWindow::keepUnsaved()
 {
     m_backupTimer.stop();
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        KTextEditor::Document *doc = viewAt(i)->document();
+    for (KTextEditor::Document *doc : documents()) {
         if (!backupDocument(doc)) {
-            m_tabs->setCurrentIndex(i);
+            activateView(doc->views().value(0));
             if (!doc->queryClose()) {
                 return false;
             }
@@ -2448,8 +2635,8 @@ bool MainWindow::keepUnsaved()
     }
     saveSession();
     m_keepBackups = true;
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        viewAt(i)->document()->setModified(false);
+    for (KTextEditor::Document *doc : documents()) {
+        doc->setModified(false);
     }
     return true;
 }
@@ -2516,18 +2703,17 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
     saveSession();
     // Unsaved documents: Save / Discard / Cancel for each one.
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        KTextEditor::Document *doc = viewAt(i)->document();
+    for (KTextEditor::Document *doc : documents()) {
         if (doc->isModified()) {
-            m_tabs->setCurrentIndex(i);
+            activateView(doc->views().value(0));
             if (!doc->queryClose()) {
                 event->ignore();
                 return;
             }
         }
     }
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        viewAt(i)->document()->setModified(false);
+    for (KTextEditor::Document *doc : documents()) {
+        doc->setModified(false);
     }
     state().sync();
     event->accept();

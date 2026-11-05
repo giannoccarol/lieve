@@ -505,6 +505,29 @@ void setupTestHooks(QApplication &app)
                 }
             });
         }
+        // LIEVE_TEST_SPLIT=<file to open in the new group>[,close]: Ctrl+\ on the
+        // current editor, then that file there; "close" closes the new group's tabs.
+        if (qEnvironmentVariableIsSet("LIEVE_TEST_SPLIT")) {
+            const QStringList split = qEnvironmentVariable("LIEVE_TEST_SPLIT").split(QLatin1Char(','));
+            const auto trigger = [window](const QKeySequence &key) {
+                const auto actions = window->actions();
+                for (QAction *action : actions) { // by shortcut: the text depends on the language
+                    if (action->shortcuts().contains(key)) {
+                        action->trigger();
+                        return;
+                    }
+                }
+            };
+            trigger(QKeySequence(Qt::CTRL | Qt::Key_Backslash));
+            if (!split.value(0).isEmpty()) {
+                window->openFile(split.value(0));
+            }
+            if (split.contains(QStringLiteral("close"))) {
+                trigger(QKeySequence(Qt::CTRL | Qt::Key_W));
+                trigger(QKeySequence(Qt::CTRL | Qt::Key_W));
+            }
+            qInfo().noquote() << "groups" << window->findChildren<TabView *>().size() - 1; // minus the terminal's
+        }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_HOVER")) { // show the hover look of the window buttons
             for (QToolButton *button : window->findChildren<QToolButton *>()) {
                 if (button->objectName() == QLatin1String("closeButton") || button->property("lieveRole").toString() == QLatin1String("minimize")) {

@@ -100,11 +100,21 @@ private:
     void syncActivityBar();
 
     // Editors
-    KTextEditor::View *addView(KTextEditor::Document *doc);
+    KTextEditor::View *addView(KTextEditor::Document *doc, TabView *group = nullptr);
     void configureView(KTextEditor::View *view);
     void applyKeymap(KTextEditor::View *view);
     KTextEditor::View *currentView() const;
-    KTextEditor::View *viewAt(int index) const;
+    KTextEditor::View *viewAt(int index) const; // in the active group
+    // Editor groups side by side (Ctrl+\\): m_tabs is the active one.
+    TabView *createGroup();
+    void removeGroup(TabView *group);
+    void setActiveGroup(TabView *group);
+    TabView *groupOf(KTextEditor::View *view) const;
+    void activateView(KTextEditor::View *view);
+    QList<KTextEditor::View *> allViews() const; // every group
+    QList<KTextEditor::Document *> documents() const; // each once
+    void splitEditor();
+    void focusGroup(int index);
     KTextEditor::View *findView(const QString &path) const;
     bool closeView(KTextEditor::View *view);
     bool closeAllViews();
@@ -178,7 +188,9 @@ private:
     QWidget *m_chooserPage = nullptr;
     ProjectList *m_chooser = nullptr;
     QWidget *m_emptyPage = nullptr;
-    TabView *m_tabs = nullptr;
+    TabView *m_tabs = nullptr; // the active editor group
+    QList<TabView *> m_groups;
+    QSplitter *m_editorSplit = nullptr;
     TitleBar *m_titleBar = nullptr;
     StatusBar *m_status = nullptr;
     QHash<KTextEditor::Document *, DocumentBlame *> m_blames; // git blame of each open file
