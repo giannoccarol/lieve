@@ -113,7 +113,9 @@ QVariant ExplorerProxy::data(const QModelIndex &index, int role) const
 bool ExplorerProxy::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
 {
     const QModelIndex idx = fs()->index(sourceRow, 0, sourceParent);
-    return !m_excluded.contains(fs()->fileName(idx));
+    const QString name = fs()->fileName(idx);
+    // The editor's own recovery files (".name.kate-swp") are not the project's.
+    return !m_excluded.contains(name) && !name.endsWith(QLatin1String(".kate-swp"));
 }
 
 bool ExplorerProxy::lessThan(const QModelIndex &left, const QModelIndex &right) const

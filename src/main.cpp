@@ -16,7 +16,9 @@
 #include "windowmanager.h"
 
 #include <KActionCollection>
+#include <KConfigGroup>
 #include <KDBusService>
+#include <KSharedConfig>
 #include <KLocalizedString>
 #include <KTextEditor/Document>
 #include <KTextEditor/View>
@@ -659,6 +661,14 @@ int main(int argc, char **argv)
     }
 
     Lieve::ensureConfigFile();
+    // Lieve backs up unsaved files itself (hot exit, also against crashes), so
+    // KTextEditor's swap files (".name.kate-swp" next to each edited file, which
+    // git would list as new files) are turned off.
+    KConfigGroup editorConfig(KSharedConfig::openConfig(), QStringLiteral("KTextEditor Document"));
+    if (editorConfig.readEntry("Swap File Mode", 1) != 0) {
+        editorConfig.writeEntry("Swap File Mode", 0);
+        editorConfig.sync();
+    }
     Lieve::Theme::apply(app);
     WindowManager::instance().handleCommandLine(QCoreApplication::arguments(), QDir::currentPath());
     Lieve::JumpList::update();

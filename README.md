@@ -11,6 +11,8 @@ VS Code. File icons and the main keyboard shortcuts are the ones from VS Code.
 
 *Lieve* is Italian for "light". The interface is in English and Italian and follows the system language.
 
+![Lieve: Explorer, editor with change marks next to the line numbers and inline blame](docs/screenshots/overview.webp)
+
 How heavy it is, measured with the same medium-sized Angular project open in both:
 
 | | VS Code (with its extensions) | Lieve |
@@ -120,11 +122,15 @@ lieve --open-folder        # asks which folder to open
   panel and the current editor, with VS Code-style categories ("View: Toggle Panel"), shortcuts and fuzzy
   matching. Recently used commands come first. Commands with choices open a second list: "Change Language
   Mode", "Change File Encoding", "Change End of Line Sequence".
+![The Command Palette](docs/screenshots/palette.webp)
+
 - **Quick Open** (`Ctrl+P`): files by name, `name:line` to go to a line. `Ctrl+G` (or a click on Ln/Col)
   opens it with `:` to go to a line of the current file (`:42` or `:42:7`); deleting `>` or `:` goes back
   to files.
 
 ### Editor groups
+
+![Two editor groups side by side](docs/screenshots/split.webp)
 
 `Ctrl+\` shows the current file again in a group on the right, like VS Code's split editor; `Ctrl+1`,
 `Ctrl+2`, `Ctrl+3` focus a group (the next number splits). Each group has its own tabs; a file open in two
@@ -156,6 +162,8 @@ commands, the idle minutes and a memory cap for tsserver (`enabled=false` turns 
 
 `Ctrl+Shift+F` searches the project with ripgrep (case, whole word, regular expressions, files to include and
 exclude). `Ctrl+Shift+H` (or the chevron next to the search box) shows a **Replace** field:
+
+![Replace in files with the preview of the change](docs/screenshots/replace.webp)
 
 - Results preview the change inline (old text struck out, new text highlighted); **Replace All** asks first.
 - Hover a result to replace or dismiss a single line, or a whole file. With regular expressions the
@@ -330,6 +338,8 @@ Editor, Files, Terminal, Git, Formatting, Languages, Updates) and each option wi
 control. Changes are saved at once in `~/.config/lieve/lieve.conf`, keeping its comments; font, minimap, word
 wrap and inline blame apply at once, options that need a restart are marked and offer a **Restart** button
 that reopens your projects. **Open lieve.conf** edits the file itself (commented, one key per option).
+
+![The Settings window](docs/screenshots/settings.webp)
 
 Recent and pinned projects, and each project's session, are stored in `~/.local/state/lieve/state.ini`.
 
