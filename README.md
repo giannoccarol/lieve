@@ -3,10 +3,11 @@
 <img src="data/lieve.svg" alt="" width="96" align="right">
 
 A lightweight, native code editor for KDE Plasma (Qt 6 + KDE Frameworks, no Electron).
-It does a few things and does them well: **Explorer**, **Search in files**, **Quick Open** (`Ctrl+P`),
-**editor** and **terminal**, with several projects open at once (one window per project),
-**Prettier on save** and a **Git panel**, as in VS Code.
-File icons and the main keyboard shortcuts are the ones from VS Code.
+It does a few things and does them well: **Explorer**, **Search and replace in files**, **Quick Open**
+(`Ctrl+P`) and the **Command Palette** (`Ctrl+Shift+P`), **editor** (also side by side) and **terminal**,
+with several projects open at once (one window per project), **Prettier and ESLint on save**, a **Git panel**
+with change marks next to the line numbers and inline blame, and unsaved files kept across restarts, as in
+VS Code. File icons and the main keyboard shortcuts are the ones from VS Code.
 
 *Lieve* is Italian for "light". The interface is in English and Italian and follows the system language.
 
@@ -33,7 +34,7 @@ that is the price of being light.
 | Editor theme | "VSCodium Dark" with a dark system theme, "Breeze Light" with a light one |
 | Window look | colours derived from the editor theme (Qt palette + style sheet), like VS Code |
 | Multiple windows | a single process (KDBusService): running `lieve` again hands the request to the open one |
-| Formatting | the project's own Prettier (`node_modules`), kept loaded by a small Node process |
+| Formatting | the project's own Prettier and ESLint (`node_modules`), kept loaded by a small Node process |
 | Git | the `git` command (status with `--porcelain=v2`), one operation at a time in the background |
 
 The code is in `src/` (about 9,900 lines of C++, headers and blank lines included):
@@ -68,6 +69,9 @@ make install        # into ~/.local: bin/lieve, menu entry, icon
 
 Uninstall: `make uninstall`.
 
+**Arch Linux / CachyOS**: [`packaging/aur`](packaging/aur) has the PKGBUILDs, `lieve` (latest release) and
+`lieve-git` (main branch). Once they are on the AUR: `yay -S lieve`.
+
 ### Updates
 
 Lieve checks by itself, shortly after starting and then every 6 hours, whether a new version is out on GitHub.
@@ -75,6 +79,7 @@ If there is one, the status bar shows **⬆ Update 0.x.y**: one click shows what
 **Update Now** downloads, builds and installs the new version in the background, in the same
 folder Lieve is installed in. When it's done, click **↻ Restart**. The downloaded sources stay in
 `~/.local/share/lieve/source`. Turn the check off with `[updates] check=false` in the settings (`Ctrl+,`).
+Packages (`make PACKAGED=1`, as the AUR ones) leave updates to the package manager.
 
 ## Usage
 
@@ -99,6 +104,40 @@ lieve --open-folder        # asks which folder to open
 - Running `lieve` again (from the menu, a terminal, even the built-in one) does not start a second
   program: it opens or raises the right window.
 - Right-click a project: **pin to top**, **remove from recent**, copy path, show in file manager.
+- **Unsaved changes are kept** (VS Code's hot exit): closing a window, quitting (`Ctrl+Q`) or restarting after
+  an update never asks about unsaved files; they come back, still unsaved, when you reopen the project, new
+  untitled documents included. While you type they are also backed up every couple of seconds (in
+  `~/.local/state/lieve/backups`), so a crash loses nothing. Closing a single tab still asks Save / Don't
+  Save / Cancel. `[files] hotExit=false` asks on close as before.
+
+### Command Palette and Quick Open
+
+- **Command Palette** (`Ctrl+Shift+P` or `F1`, or type `>` in Quick Open): every command of the window, the Git
+  panel and the current editor, with VS Code-style categories ("View: Toggle Panel"), shortcuts and fuzzy
+  matching. Recently used commands come first. Commands with choices open a second list: "Change Language
+  Mode", "Change File Encoding", "Change End of Line Sequence".
+- **Quick Open** (`Ctrl+P`): files by name, `name:line` to go to a line. `Ctrl+G` (or a click on Ln/Col)
+  opens it with `:` to go to a line of the current file (`:42` or `:42:7`); deleting `>` or `:` goes back
+  to files.
+
+### Editor groups
+
+`Ctrl+\` shows the current file again in a group on the right, like VS Code's split editor; `Ctrl+1`,
+`Ctrl+2`, `Ctrl+3` focus a group (the next number splits). Each group has its own tabs; a file open in two
+groups is one document, so edits show in both, and closing one of its tabs keeps the other. An emptied group
+goes away. (The session reopens the files in a single group.)
+
+### Search and replace
+
+`Ctrl+Shift+F` searches the project with ripgrep (case, whole word, regular expressions, files to include and
+exclude). `Ctrl+Shift+H` (or the chevron next to the search box) shows a **Replace** field:
+
+- Results preview the change inline (old text struck out, new text highlighted); **Replace All** asks first.
+- Hover a result to replace or dismiss a single line, or a whole file. With regular expressions the
+  replacement understands `$1`, `$&`, `\n` and `\u \l \U \L`.
+- Files open in the editor are changed in their document as one undo step, without saving. Other files are
+  rewritten only if they are UTF-8 text, keeping BOM, line endings and permissions. Lines changed since the
+  search are never touched.
 
 ### Terminal
 
@@ -110,11 +149,18 @@ lieve --open-folder        # asks which folder to open
   The choice is saved in `lieve.conf` (`[terminal] shell=`) and applies to every window.
 - `[terminal] shell=` takes `auto` (the login shell), a name such as `fish`, `zsh`, `bash`, or a full path.
 
-### Prettier on save
+### Prettier and ESLint on save
 
 It follows the same rules as VS Code, read from your settings: `editor.formatOnSave` and
 `prettier.requireConfig` from the project's `.vscode/settings.json` or from your VS Code user settings,
 plus `.prettierrc` (with its plugins), `.prettierignore` and `.editorconfig`.
+
+- **ESLint fix on save**: when `editor.codeActionsOnSave` asks for `source.fixAll.eslint` (as Angular projects
+  usually do), Lieve runs the project's own ESLint "fix all" before Prettier on every save, as one undo step.
+  It stays loaded in a worker thread of the same Node process, so saves stay fast; if it takes too long the
+  file is saved with Prettier only. Flat and legacy configs, `eslint.validate` and ignore files are respected.
+  `[format] eslint=auto|true|false`; with ESLint loaded the Node process takes about 200 MB more.
+- **Format Document** (`Ctrl+Shift+I`) runs the same steps; **Save without Formatting** skips both.
 
 - It uses the Prettier installed in the project (`node_modules/prettier`): projects without Prettier are left alone.
 - Formatting happens right before writing: the file is written once (so `ng serve` rebuilds once).
@@ -146,6 +192,12 @@ plus `.prettierrc` (with its plugins), `.prettierignore` and `.editorconfig`.
   come back to the window and every 10 seconds. With `git.autofetch` on it fetches every 3 minutes, never
   asking for a password in the background.
 - Git hooks (husky, lint-staged…) find `node` even when Lieve is started from the menu.
+- **Change marks next to the line numbers** (VS Code's quick diff): a thin bar on lines added (green) or
+  modified (blue) and a red wedge where lines were deleted, comparing the editor's text (unsaved edits
+  included) with the staged version. Staging a change makes its marks go away; click a mark to open the diff
+  at that change; `Shift+Alt+F3` / `Alt+F3` go to the previous / next change (Plasma keeps `Alt+F3` for
+  the window menu unless you free it). Git reads the file once, edits are compared in memory.
+  `[git] gutter=false` turns them off.
 - **Inline blame**, like GitLens: at the end of the cursor line, in grey, who changed it, when and the commit
   message ("Jane Doe, 1 year ago • fix: …"); uncommitted lines say "You, now". git blame runs once per
   file, in the background, and edits are followed in memory, so moving between lines is instant.
@@ -165,7 +217,7 @@ to resize. `[ui] titleBar=system` brings back Plasma's title bar.
 At the bottom there is a **status bar**: on the left the branch (click: Git panel) and ↓↑ to sync
 (click: sync); on the right who wrote the current line and when ("You, 6 months ago", like GitLens, computed on
 the text in the editor), line and column (click: go to line), spaces/tabs (click: change), encoding, line ending
-and language (click: their menus), ✓ Prettier (click: format now). The × on tabs shows on the active tab and on hover.
+and language (click: their menus), ✓ ESLint / ✓ Prettier (click: format now). The × on tabs shows on the active tab and on hover.
 
 The rest: sidebars and tabs a little darker than the editor, thin borders, slim scrollbars without a track,
 a single accent colour (active tab, Commit button, focused fields, counters); the active item in the activity
@@ -190,7 +242,9 @@ carries the line `X-Lieve-JumpList=true`).
 | Action | Keys |
 | --- | --- |
 | Quick Open (`name:line` to go to a line) | `Ctrl+P` |
+| Command Palette | `Ctrl+Shift+P` or `F1` |
 | Search in files (uses the selected text) | `Ctrl+Shift+F` |
+| Replace in files | `Ctrl+Shift+H` |
 | Explorer | `Ctrl+Shift+E` |
 | Show/hide sidebar | `Ctrl+B` |
 | Show/hide terminal | `Ctrl+J` |
@@ -208,15 +262,17 @@ carries the line `X-Lieve-JumpList=true`).
 | Save without formatting | `Ctrl+K` then `Ctrl+Shift+S` |
 | Close tab | `Ctrl+W` (or middle-click the tab) |
 | Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Split editor / focus group 1, 2, 3 | `Ctrl+\` / `Ctrl+1`, `Ctrl+2`, `Ctrl+3` |
+| Next / previous change | `Alt+F3` / `Shift+Alt+F3` |
 | Find / replace in file | `Ctrl+F` / `Ctrl+H` |
-| Go to line | `Ctrl+G` |
+| Go to line (Quick Open with `:`) | `Ctrl+G` |
 | Select next occurrence / all | `Ctrl+D` / `Ctrl+Shift+L` |
 | Move / duplicate lines | `Alt+↑↓` / `Alt+Shift+↑↓` |
 | Delete line | `Ctrl+Shift+K` |
 | Toggle comment | `Ctrl+/` |
 | Settings | `Ctrl+,` |
 
-In the terminal Lieve keeps only `Ctrl+P`, `Ctrl+J`, `Ctrl+Shift+E/F` and `` Ctrl+` ``:
+In the terminal Lieve keeps only `Ctrl+P`, `Ctrl+Shift+P`, `F1`, `Ctrl+J`, `Ctrl+Shift+E/F` and `` Ctrl+` ``:
 every other key goes to the shell (including `Ctrl+R`, history search).
 
 In the Explorer: click to open, `F2` renames, `Delete` moves to the trash,
@@ -240,13 +296,20 @@ After changing strings in the code, `make translations` updates every `.ts` file
 
 ## Settings
 
-`Ctrl+,` opens `~/.config/lieve/lieve.conf` (commented). You can change editor theme, font, minimap,
-word wrap, VS Code shortcuts, search and Explorer exclusions, icon theme, look (`[ui]`, `[terminal]`),
-project folders (`[projects] roots=`), language (`[ui] language=`), terminal shell (`[terminal] shell=`), Prettier (`[format]`: `onSave=auto|true|false`, minutes to wait
-before closing the process, path to node), Git (`[git]`: `smartCommit`, `autofetch`, `autofetchMinutes`,
-`inlineBlame`) and updates (`[updates] check`). Changes apply after a restart.
+`Ctrl+,` opens the **Settings window**, like VS Code's: a search box, categories (General, Appearance, Text
+Editor, Files, Terminal, Git, Formatting, Languages, Updates) and each option with a short description and its
+control. Changes are saved at once in `~/.config/lieve/lieve.conf`, keeping its comments; font, minimap, word
+wrap and inline blame apply at once, options that need a restart are marked and offer a **Restart** button
+that reopens your projects. **Open lieve.conf** edits the file itself (commented, one key per option).
 
 Recent and pinned projects, and each project's session, are stored in `~/.local/state/lieve/state.ini`.
+
+## Development
+
+- `make check` runs the tests in `tests/` (they need git and no display); GitHub Actions runs them before
+  every build and release.
+- `make translations` refreshes the strings in `i18n/*.ts` after changing them in the code.
+- `packaging/aur` has the AUR packages and how they are published.
 
 ## Releasing a new version
 

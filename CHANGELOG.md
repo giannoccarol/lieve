@@ -3,6 +3,20 @@
 Each version has its own section here: its text becomes the GitHub release notes and is what
 Lieve shows when it offers the update.
 
+## v0.1.2
+
+- Command Palette (`Ctrl+Shift+P`, `F1`, or `>` in Quick Open) with VS Code-style categories, shortcuts
+  and recently used commands; `Ctrl+G` opens Quick Open with `:` to go to a line.
+- Replace in files (`Ctrl+Shift+H`): inline preview, Replace All, per file and per line; open files are
+  changed in the editor as one undo step.
+- Editor groups side by side (`Ctrl+\`, `Ctrl+1/2/3`).
+- Git change marks next to the line numbers (added, modified, deleted), compared with the staged version;
+  click one for the diff, `Alt+F3`/`Shift+Alt+F3` to move between them.
+- ESLint "fix all" on save, before Prettier, when the project's VS Code settings ask for it.
+- Hot exit: unsaved files are kept when closing, quitting or restarting, and backed up while typing.
+- Settings window (`Ctrl+,`) with search and categories, saving to `lieve.conf` without losing its comments.
+- AUR packages (`packaging/aur`), tests (`make check`) run by CI before every build and release.
+
 ## v0.1.1
 
 - English and Italian interface: Lieve follows the system language (or `[ui] language=en|it`),
