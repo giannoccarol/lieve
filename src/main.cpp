@@ -7,6 +7,7 @@
 #include "searchpanel.h"
 #include "settings.h"
 #include "tabview.h"
+#include "settingsdialog.h"
 #include "theme.h"
 #include "terminalpanel.h"
 #include "updater.h"
@@ -19,8 +20,11 @@
 #include <KTextEditor/Document>
 #include <KTextEditor/View>
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QCommandLineParser>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -38,6 +42,7 @@
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
@@ -468,6 +473,38 @@ void setupTestHooks(QApplication &app)
                 }
             });
         }
+        // The Settings window, on a category or a search (LIEVE_TEST_SETTINGS);
+        // LIEVE_TEST_SETTINGS_SET="git/inlineBlame=false;editor/fontSize=14"
+        // changes its controls as a user would; LIEVE_TEST_SETTINGS_CLICK then
+        // presses a button (primaryButton = Restart, openConfig).
+        if (qEnvironmentVariableIsSet("LIEVE_TEST_SETTINGS")) {
+            SettingsDialog *dialog = SettingsDialog::showFor(window, qEnvironmentVariable("LIEVE_TEST_SETTINGS"));
+            const QStringList changes = qEnvironmentVariable("LIEVE_TEST_SETTINGS_SET").split(QLatin1Char(';'), Qt::SkipEmptyParts);
+            QTimer::singleShot(600, dialog, [dialog, changes] {
+                for (const QString &change : changes) {
+                    const QString name = change.section(QLatin1Char('='), 0, 0);
+                    const QString value = change.section(QLatin1Char('='), 1);
+                    auto *control = dialog->findChild<QWidget *>(name);
+                    if (auto *check = qobject_cast<QCheckBox *>(control)) {
+                        check->setChecked(value == QLatin1String("true"));
+                    } else if (auto *combo = qobject_cast<QComboBox *>(control); combo && combo->findData(value) >= 0) {
+                        combo->setCurrentIndex(combo->findData(value));
+                    } else if (auto *spin = qobject_cast<QSpinBox *>(control)) {
+                        spin->setValue(value.toInt());
+                    } else if (auto *edit = qobject_cast<QLineEdit *>(control)) {
+                        edit->setText(value);
+                        Q_EMIT edit->editingFinished();
+                    }
+                    qInfo().noquote() << "settings-set" << name << value << (control ? "" : "(no such control)");
+                }
+                const QString click = qEnvironmentVariable("LIEVE_TEST_SETTINGS_CLICK");
+                qunsetenv("LIEVE_TEST_SETTINGS_CLICK"); // not again in a restarted Lieve
+                if (auto *button = click.isEmpty() ? nullptr : dialog->findChild<QAbstractButton *>(click)) {
+                    qInfo().noquote() << "settings-click" << click;
+                    button->click();
+                }
+            });
+        }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_HOVER")) { // show the hover look of the window buttons
             for (QToolButton *button : window->findChildren<QToolButton *>()) {
                 if (button->objectName() == QLatin1String("closeButton") || button->property("lieveRole").toString() == QLatin1String("minimize")) {
@@ -533,6 +570,15 @@ void setupTestHooks(QApplication &app)
                 file.replace(QStringLiteral(".png"), QStringLiteral("-%1.png").arg(i));
             }
             windows.at(i)->grab().save(file);
+        }
+        const auto topLevels = QApplication::topLevelWidgets();
+        for (QWidget *top : topLevels) {
+            if (auto *dialog = qobject_cast<SettingsDialog *>(top); dialog && dialog->isVisible()) {
+                dialog->grab().save(QString(screenshot).replace(QStringLiteral(".png"), QStringLiteral("-settings.png")));
+                if (auto *content = dialog->findChild<QWidget *>(QStringLiteral("settingsContent"))) { // the whole list
+                    content->grab().save(QString(screenshot).replace(QStringLiteral(".png"), QStringLiteral("-settings-all.png")));
+                }
+            }
         }
 
         QApplication::exit(0);

@@ -132,25 +132,24 @@ void Updater::restart()
 {
     // Close first: unsaved files go into backups (hot exit) or are asked
     // about, and the user can still cancel.
-    WindowManager &windows = WindowManager::instance();
-    QStringList projects;
-    for (MainWindow *window : windows.windows()) {
-        if (!window->project().isEmpty()) {
-            projects << window->project();
-        }
+    const QSet<QString> projects = WindowManager::instance().openProjects();
+    if (!WindowManager::instance().closeAll()) {
+        return; // cancelled on an unsaved file: keep running
     }
-    if (!windows.closeAll()) {
-        return;
+    // The installed copy (maybe just updated), or this one when run from where it was built.
+    QString exe = prefix() + QStringLiteral("/bin/lieve");
+    if (!QFileInfo(exe).isExecutable()) {
+        exe = QCoreApplication::applicationFilePath();
     }
-    // Start the new Lieve only once this one has exited, otherwise it would
-    // hand its arguments to us (single instance) and quit. It reopens the
-    // projects, and with them their unsaved files.
-    QProcess::startDetached(QStringLiteral("sh"),
-                            QStringList{QStringLiteral("-c"),
-                                        QStringLiteral("while kill -0 \"$0\" 2>/dev/null; do sleep 0.2; done; exec \"$@\""),
-                                        QString::number(QCoreApplication::applicationPid()),
-                                        prefix() + QStringLiteral("/bin/lieve")}
-                                + projects);
+    // Start the new Lieve, with the same projects, only once this one has
+    // exited, otherwise it would hand its arguments to us (single instance) and quit.
+    QStringList args{QStringLiteral("-c"),
+                     QStringLiteral("while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; shift; exec \"$@\""),
+                     QStringLiteral("lieve-restart"),
+                     QString::number(QCoreApplication::applicationPid()),
+                     exe};
+    args << projects.values();
+    QProcess::startDetached(QStringLiteral("sh"), args);
 }
 
 void Updater::setState(State state)

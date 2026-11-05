@@ -347,3 +347,18 @@ void TerminalPanel::stripReservedShortcuts(KXMLGUIClient *client)
         stripReservedShortcuts(child);
     }
 }
+
+QStringList TerminalPanel::shellNames()
+{
+    QStringList names;
+    const QList<Shell> shells = availableShells();
+    for (const Shell &shell : shells) {
+        names << shell.name;
+    }
+    return names;
+}
+
+QString TerminalPanel::loginShellName()
+{
+    return QFileInfo(loginShell()).fileName();
+}
