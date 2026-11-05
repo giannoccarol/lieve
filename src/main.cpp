@@ -242,7 +242,7 @@ void hotExitTest(const QString &screenshot)
     const auto editorTabs = [](MainWindow *window) -> TabView * { // not the terminal's
         const auto all = window->findChildren<TabView *>();
         for (TabView *tabView : all) {
-            if (tabView->parentWidget() && tabView->parentWidget()->objectName() == QLatin1String("editorCard")) {
+            if (tabView->parentWidget() && tabView->parentWidget()->objectName() == QLatin1String("editorSplit")) { // the editor groups
                 return tabView;
             }
         }
