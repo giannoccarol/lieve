@@ -10,6 +10,9 @@ Lieve shows when it offers the update.
 - Replace in files (`Ctrl+Shift+H`): inline preview, Replace All, per file and per line; open files are
   changed in the editor as one undo step.
 - Editor groups side by side (`Ctrl+\`, `Ctrl+1/2/3`).
+- Language servers (LSP), when installed: Go to Definition (`F12`, `Ctrl+click`), problems underlined with
+  a count in the status bar (`F8`), hover, completion with auto-imports, Go to Symbol in File
+  (`Ctrl+Shift+O`). TypeScript via `typescript-language-server`; Angular templates opt-in.
 - Git change marks next to the line numbers (added, modified, deleted), compared with the staged version;
   click one for the diff, `Alt+F3`/`Shift+Alt+F3` to move between them.
 - ESLint "fix all" on save, before Prettier, when the project's VS Code settings ask for it.

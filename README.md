@@ -20,8 +20,9 @@ How heavy it is, measured with the same medium-sized Angular project open in bot
 | Disk space | ~2.7 GB | ~1.4 MB (plus the KDE libraries Plasma already ships) |
 
 It starts in about a quarter of a second, and each extra open project costs a few MB.
-There is no language server (no TypeScript completion, no "go to definition"):
-that is the price of being light.
+Language intelligence (go to definition, errors, completion) comes from a language server when one is
+installed, and costs what it costs in VS Code too: the TypeScript server alone takes over 1 GB on a large
+project. Without one, Lieve stays as light as above.
 
 ## How it is built
 
@@ -36,12 +37,15 @@ that is the price of being light.
 | Multiple windows | a single process (KDBusService): running `lieve` again hands the request to the open one |
 | Formatting | the project's own Prettier and ESLint (`node_modules`), kept loaded by a small Node process |
 | Git | the `git` command (status with `--porcelain=v2`), one operation at a time in the background |
+| Language intelligence | language servers (LSP) such as `typescript-language-server`, started only when needed |
 
-The code is in `src/` (about 9,900 lines of C++, headers and blank lines included):
-`mainwindow` (window, tabs, project session), `windowmanager` (windows and single instance),
+The code is in `src/` (about 19,400 lines of C++, headers and blank lines included):
+`mainwindow` (window, editor groups, tabs, project session), `windowmanager` (windows and single instance),
 `projects` and `projectlist` (project list and picker), `jumplist` (taskbar menu),
-`explorer`, `searchpanel`, `quickopen`, `terminalpanel`, `vscodeicons` (VS Code icons and languages),
-`prettier` (formatting), `git` and `gitpanel` (source control), `theme` (look, cards),
+`explorer`, `searchpanel` (search and replace), `quickopen` and `commandpalette`, `terminalpanel`,
+`vscodeicons` (VS Code icons and languages), `prettier` (Prettier and ESLint), `git` and `gitpanel`
+(source control), `blame`, `gitgutter` and `linediff` (change marks), `lsp`, `lspclient`, `lspcompletion`
+and `symbolpicker` (language servers), `backups` (hot exit), `settingsdialog`, `theme` (look, cards),
 `titlebar`, `statusbar`, `tabview` (scrolling tabs), `updater`, `fuzzy`, `settings`.
 
 ## Install
@@ -126,6 +130,27 @@ lieve --open-folder        # asks which folder to open
 `Ctrl+2`, `Ctrl+3` focus a group (the next number splits). Each group has its own tabs; a file open in two
 groups is one document, so edits show in both, and closing one of its tabs keeps the other. An emptied group
 goes away. (The session reopens the files in a single group.)
+
+### Language intelligence (language servers)
+
+When a language server is installed, Lieve uses it, like VS Code does through its extensions:
+
+- **Go to Definition**: `F12` or `Ctrl+click` (`Alt+←` / `Alt+→` to go back and forward).
+- **Problems** underlined as you type, the message on hover, a count (⊗ errors ⚠ warnings) in the status bar;
+  `F8` / `Shift+F8` go to the next / previous one.
+- **Hover** information, **completion** with auto-imports, **Go to Symbol in File** (`Ctrl+Shift+O`).
+
+TypeScript and JavaScript use `typescript-language-server` with the project's own TypeScript:
+
+```bash
+npm install -g typescript-language-server
+```
+
+A server starts only when you open a file of its language, one per project window; it stops a few minutes
+after its last file is closed and when the window closes. Without a server nothing changes. Angular
+templates (`.html`) can use `@angular/language-server`, but it takes several GB on large projects, so it is
+off until you set `[lsp] angular=auto`. The `[lsp]` section of `lieve.conf` also has custom server
+commands, the idle minutes and a memory cap for tsserver (`enabled=false` turns it all off).
 
 ### Search and replace
 
@@ -264,6 +289,10 @@ carries the line `X-Lieve-JumpList=true`).
 | Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Split editor / focus group 1, 2, 3 | `Ctrl+\` / `Ctrl+1`, `Ctrl+2`, `Ctrl+3` |
 | Next / previous change | `Alt+F3` / `Shift+Alt+F3` |
+| Go to definition / back | `F12` or `Ctrl+click` / `Alt+←` |
+| Go to symbol in file | `Ctrl+Shift+O` |
+| Next / previous problem | `F8` / `Shift+F8` |
+| Trigger completion | `Ctrl+Space` |
 | Find / replace in file | `Ctrl+F` / `Ctrl+H` |
 | Go to line (Quick Open with `:`) | `Ctrl+G` |
 | Select next occurrence / all | `Ctrl+D` / `Ctrl+Shift+L` |
@@ -348,8 +377,13 @@ Lieve puts together components written by others; the credit for the heavy lifti
   The same goes for [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
   by Philipp Kief, if that is the chosen theme.
 - **Git** (Linus Torvalds, Junio C Hamano and contributors, GPLv2): Lieve uses the installed `git` command.
-- **Prettier** (James Long and contributors, MIT) and **Node.js**: Lieve uses the Prettier already installed
-  in the project and does not bundle a copy.
+- **Prettier** (James Long and contributors, MIT), **ESLint** (Nicholas C. Zakas and contributors, OpenJS
+  Foundation, MIT) and **Node.js**: Lieve uses the copies already installed in the project and bundles none.
+- **Language servers**: [typescript-language-server](https://github.com/typescript-language-server/typescript-language-server)
+  (TypeFox and contributors, Apache-2.0) with Microsoft's TypeScript (`tsserver`), and the
+  [Angular Language Service](https://github.com/angular/vscode-ng-language-service) (Google, MIT), when
+  installed. The [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) is Microsoft's.
 - **Microsoft**: language definitions (file extensions) are read from the built-in extensions of the
   installed [Visual Studio Code](https://github.com/microsoft/vscode).
-- Layout and shortcuts are inspired by Visual Studio Code.
+- Layout, shortcuts, the command palette, quick diff, hot exit and the settings window are modelled on
+  Visual Studio Code's.

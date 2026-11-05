@@ -626,9 +626,156 @@ Le modifiche agli altri file andranno perse.</translation>
     </message>
 </context>
 <context>
+    <name>Lieve::LspManager</name>
+    <message>
+        <location filename="../src/lsp.cpp" line="+368"/>
+        <location line="+39"/>
+        <source>Go to Definition</source>
+        <translation>Vai alla definizione</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Go Back</source>
+        <translation>Torna indietro</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Go Forward</source>
+        <translation>Vai avanti</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Go to Symbol in File</source>
+        <translation>Vai al simbolo nel file</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Next Problem</source>
+        <translation>Problema successivo</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Previous Problem</source>
+        <translation>Problema precedente</translation>
+    </message>
+    <message>
+        <location line="+717"/>
+        <source>%1 language server: running</source>
+        <translation>Server di linguaggio %1: attivo</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>%1 language server: starting…</source>
+        <translation>Server di linguaggio %1: in avvio…</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>%1 language server stopped: %2</source>
+        <translation>Server di linguaggio %1 fermo: %2</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>1 error</source>
+        <translation>1 errore</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>%1 errors</source>
+        <translation>%1 errori</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>1 warning</source>
+        <translation>1 avviso</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>%1 warnings</source>
+        <translation>%1 avvisi</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Problems in the open files: %1, %2</source>
+        <translation>Problemi nei file aperti: %1, %2</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Click or F8: next problem</source>
+        <translation>Clic o F8: problema successivo</translation>
+    </message>
+    <message>
+        <location line="+196"/>
+        <source>Go to Definition needs a language server for this file (see [lsp] in Settings, Ctrl+,).</source>
+        <translation>Per andare alla definizione serve un server di linguaggio per questo file (vedi [lsp] in Impostazioni, Ctrl+,).</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>The %1 language server stopped: %2</source>
+        <translation>Il server di linguaggio %1 si è fermato: %2</translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>No definition found.</source>
+        <translation>Nessuna definizione trovata.</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>No definition found for “%1”.</source>
+        <translation>Nessuna definizione trovata per “%1”.</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>%1 definitions of “%2”</source>
+        <translation>%1 definizioni di “%2”</translation>
+    </message>
+    <message>
+        <location line="+47"/>
+        <source>Go to Symbol needs a language server for this file (see [lsp] in Settings, Ctrl+,).</source>
+        <translation>Per andare a un simbolo serve un server di linguaggio per questo file (vedi [lsp] in Impostazioni, Ctrl+,).</translation>
+    </message>
+    <message>
+        <location line="+56"/>
+        <source>No symbols in this file.</source>
+        <translation>Nessun simbolo in questo file.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Go to symbol in file…</source>
+        <translation>Vai al simbolo nel file…</translation>
+    </message>
+</context>
+<context>
+    <name>Lsp</name>
+    <message>
+        <location filename="../src/lspclient.cpp" line="+282"/>
+        <source>cannot run %1</source>
+        <translation>impossibile avviare %1</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>the server did not start</source>
+        <translation>il server non è partito</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>the server did not answer</source>
+        <translation>il server non ha risposto</translation>
+    </message>
+    <message>
+        <location line="+257"/>
+        <source>the server crashed</source>
+        <translation>il server è andato in crash</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>the server exited (code %1)</source>
+        <translation>il server è terminato (codice %1)</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/mainwindow.cpp" line="+386"/>
+        <location filename="../src/mainwindow.cpp" line="+391"/>
         <source>Explorer (Ctrl+Shift+E)</source>
         <translation>Esplora risorse (Ctrl+Shift+E)</translation>
     </message>
@@ -639,12 +786,12 @@ Le modifiche agli altri file andranno perse.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+1756"/>
+        <location line="+1773"/>
         <source>Source Control (Ctrl+Shift+G)</source>
         <translation>Controllo del codice sorgente (Ctrl+Shift+G)</translation>
     </message>
     <message>
-        <location line="-1754"/>
+        <location line="-1771"/>
         <source>Side Bar (Ctrl+B)</source>
         <translation>Barra laterale (Ctrl+B)</translation>
     </message>
@@ -654,13 +801,13 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Terminale (Ctrl+J)</translation>
     </message>
     <message>
-        <location line="+209"/>
-        <location line="+1146"/>
+        <location line="+210"/>
+        <location line="+1158"/>
         <source>Choose a project</source>
         <translation>Scegli un progetto</translation>
     </message>
     <message>
-        <location line="-1127"/>
+        <location line="-1139"/>
         <location line="+206"/>
         <source>Open Folder…</source>
         <translation>Apri cartella…</translation>
@@ -849,12 +996,12 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Esci</translation>
     </message>
     <message>
-        <location line="+710"/>
+        <location line="+721"/>
         <source>Open File</source>
         <translation>Apri file</translation>
     </message>
     <message>
-        <location line="+146"/>
+        <location line="+147"/>
         <source>Close</source>
         <translation>Chiudi</translation>
     </message>
@@ -1079,7 +1226,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Più tardi</translation>
     </message>
     <message>
-        <location line="+46"/>
+        <location line="+50"/>
         <source>Indent Using Spaces</source>
         <translation>Rientra con spazi</translation>
     </message>
@@ -1764,7 +1911,50 @@ hotExit=true
 </translation>
     </message>
     <message>
-        <location line="-28"/>
+        <location line="+9"/>
+        <source>
+[lsp]
+; Language servers: Go to Definition (F12, Ctrl+click), problems (F8), hover,
+; completion and Go to Symbol (Ctrl+Shift+O). auto = a server starts when a file
+; of its language is opened, if it is installed (in the project&apos;s node_modules
+; or globally), and stops a few minutes after its last file is closed; false = never.
+; TypeScript and JavaScript: npm install -g typescript-language-server
+; (it uses the project&apos;s TypeScript).
+enabled=auto
+; Command of each server. Empty or auto = found automatically; false = not used.
+; Example with TypeScript 7 (native, lighter): typescript=~/lsp/node_modules/.bin/tsc --lsp --stdio
+typescript=
+; Angular templates (.html) take several GB on large projects, so they are off
+; until you set auto (after npm install -g @angular/language-server) or a command.
+angular=false
+; Minutes a server keeps running after the last file of its language is closed.
+idleMinutes=5
+; Memory limit of the TypeScript server (tsserver), in MB.
+maxTsServerMemory=3072
+</source>
+        <translation>
+[lsp]
+; Server di linguaggio: vai alla definizione (F12, Ctrl+clic), problemi (F8), tooltip,
+; completamento e vai al simbolo (Ctrl+Shift+O). auto = un server parte quando si apre
+; un file del suo linguaggio, se risulta installato (nei node_modules del progetto
+; o globalmente), e si ferma qualche minuto dopo la chiusura del suo ultimo file; false = mai.
+; TypeScript e JavaScript: npm install -g typescript-language-server
+; (usa il TypeScript del progetto).
+enabled=auto
+; Comando di ogni server. Vuoto o auto = cercato da solo; false = non usato.
+; Esempio con TypeScript 7 (nativo, piu leggero): typescript=~/lsp/node_modules/.bin/tsc --lsp --stdio
+typescript=
+; I template Angular (.html) occupano diversi GB nei progetti grandi, quindi sono spenti
+; finche non imposti auto (dopo npm install -g @angular/language-server) o un comando.
+angular=false
+; Minuti in cui un server resta attivo dopo la chiusura dell&apos;ultimo file del suo linguaggio.
+idleMinutes=5
+; Limite di memoria del server TypeScript (tsserver), in MB.
+maxTsServerMemory=3072
+</translation>
+    </message>
+    <message>
+        <location line="-37"/>
         <source>
 [ui]
 ; editor = the window colors follow the editor theme (like VS Code);
