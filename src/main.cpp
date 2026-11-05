@@ -1,3 +1,4 @@
+#include "gitgutter.h"
 #include "gitpanel.h"
 #include "jumplist.h"
 #include "mainwindow.h"
@@ -36,6 +37,54 @@
 
 namespace
 {
+// LIEVE_TEST_GUTTER: edits for the git change marks, e.g. "+3:new;~7:changed;-10,2"
+// (insert before line 3, replace line 7, delete 2 lines from 10); then lists
+// the marks, steps through them like Alt+F3 and clicks one (LIEVE_TEST_GUTTER_CLICK=line).
+void testGutter(MainWindow *window, const QString &edits)
+{
+    auto *gutter = window->findChild<GitGutter *>();
+    auto *view = window->findChild<KTextEditor::View *>();
+    if (!gutter || !view) {
+        return;
+    }
+    KTextEditor::Document *doc = view->document();
+    for (const QString &op : edits.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+        const QString arg = op.mid(1).section(QLatin1Char(':'), 0, 0);
+        const QString text = op.section(QLatin1Char(':'), 1);
+        const int line = arg.section(QLatin1Char(','), 0, 0).toInt() - 1;
+        if (op.startsWith(QLatin1Char('+'))) {
+            doc->insertLine(line, text);
+        } else if (op.startsWith(QLatin1Char('~'))) {
+            doc->replaceText(KTextEditor::Range(line, 0, line, doc->lineLength(line)), text);
+        } else if (op.startsWith(QLatin1Char('-'))) {
+            for (int n = std::max(1, arg.section(QLatin1Char(','), 1, 1).toInt()); n > 0; --n) {
+                doc->removeLine(line);
+            }
+        }
+    }
+    QElapsedTimer timer;
+    timer.start();
+    gutter->compare();
+    qInfo().noquote() << "gutter-compare-ms" << double(timer.nsecsElapsed()) / 1e6 << "lines" << doc->lines();
+    static const char *kinds[] = {"added", "modified", "deleted"};
+    for (const GitGutter::Change &c : gutter->changes()) {
+        qInfo().noquote() << "gutter-change" << kinds[c.kind] << c.line + 1 << c.count;
+    }
+    const auto actions = window->actions();
+    for (QAction *action : actions) { // found by shortcut: the text depends on the interface language
+        if (action->shortcuts().contains(QKeySequence(Qt::ALT | Qt::Key_F3))) {
+            for (qsizetype i = 0; i <= gutter->changes().size(); ++i) {
+                action->trigger();
+                qInfo().noquote() << "gutter-next" << view->cursorPosition().line() + 1;
+            }
+        }
+    }
+    const int click = qEnvironmentVariableIntValue("LIEVE_TEST_GUTTER_CLICK");
+    if (click > 0) {
+        Q_EMIT gutter->clicked(click - 1);
+    }
+}
+
 // Used by the automated checks (LIEVE_SCREENSHOT=file.png): render the first
 // window to a PNG and quit. Never set in normal use.
 void setupTestHooks(QApplication &app)
@@ -143,6 +192,13 @@ void setupTestHooks(QApplication &app)
                     qInfo().noquote() << "save-ms" << timer.elapsed() << "cursor" << view->cursorPosition().line() << view->cursorPosition().column();
                 });
             }
+        }
+        const QString gutterEdits = qEnvironmentVariable("LIEVE_TEST_GUTTER");
+        if (!gutterEdits.isEmpty()) {
+            const int at = qEnvironmentVariableIntValue("LIEVE_TEST_GUTTER_AT");
+            QTimer::singleShot(at > 0 ? at : 1000, window, [window, gutterEdits] {
+                testGutter(window, gutterEdits);
+            });
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_KEYS")) {
             if (auto *view = window->findChild<KTextEditor::View *>()) {

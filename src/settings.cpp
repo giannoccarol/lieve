@@ -183,6 +183,9 @@ autofetch=auto
 autofetchMinutes=3
 ; At the end of the cursor line: author, date and message of the commit (like GitLens).
 inlineBlame=true
+; Colored marks next to the line numbers on the lines added, changed or deleted
+; compared to the staged version of the file (like VS Code).
+gutter=true
 )");
 
 const char kUiSection[] = QT_TRANSLATE_NOOP("Settings", R"(
