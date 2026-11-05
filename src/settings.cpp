@@ -220,11 +220,20 @@ const char kUpdatesSection[] = QT_TRANSLATE_NOOP("Settings", R"(
 check=true
 )");
 
+const char kFilesSection[] = QT_TRANSLATE_NOOP("Settings", R"(
+[files]
+; Hot exit, like VS Code: closing a window or quitting does not ask about unsaved files,
+; their changes come back (still unsaved) when the project is opened again.
+; false = ask to save them. Unsaved changes are always backed up while you type,
+; so a crash loses nothing.
+hotExit=true
+)");
+
 struct Section {
     const char *header;
     const char *text;
 };
-constexpr Section kLateSections[] = {{"[projects]", kProjectsSection}, {"[format]", kFormatSection}, {"[git]", kGitSection}, {"[ui]", kUiSection}, {"[updates]", kUpdatesSection}};
+constexpr Section kLateSections[] = {{"[projects]", kProjectsSection}, {"[format]", kFormatSection}, {"[git]", kGitSection}, {"[ui]", kUiSection}, {"[updates]", kUpdatesSection}, {"[files]", kFilesSection}};
 }
 
 void ensureConfigFile()
