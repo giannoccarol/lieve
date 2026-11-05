@@ -21,6 +21,8 @@ jobs:
           test "v$version" = "$GITHUB_REF_NAME" || { echo "src/version.h says $version, tag is $GITHUB_REF_NAME"; exit 1; }
       - name: Build
         run: make -j"$(nproc)"
+      - name: Test
+        run: make -j"$(nproc)" check
       - name: Release notes from CHANGELOG.md
         run: |
           awk -v head="## $GITHUB_REF_NAME" '$0 == head {found = 1; next} /^## / {found = 0} found' CHANGELOG.md > notes.md

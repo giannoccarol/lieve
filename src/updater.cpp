@@ -45,6 +45,9 @@ Updater &Updater::instance()
 
 void Updater::start()
 {
+#ifdef LIEVE_PACKAGED
+    return; // installed by a package manager, which handles updates
+#endif
     if (!Lieve::config().value(QStringLiteral("updates/check"), true).toBool() || !qEnvironmentVariableIsEmpty("LIEVE_SCREENSHOT")) {
         return;
     }
@@ -91,6 +94,9 @@ QString Updater::prefix() const
 
 bool Updater::canSelfUpdate() const
 {
+#ifdef LIEVE_PACKAGED
+    return false;
+#endif
     return QFileInfo(prefix() + QStringLiteral("/bin")).isWritable() && !QStandardPaths::findExecutable(QStringLiteral("git")).isEmpty();
 }
 

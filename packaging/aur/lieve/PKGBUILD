@@ -1,0 +1,27 @@
+# Maintainer: Lorenzo Giannoccaro <93546162+giannoccarol@users.noreply.github.com>
+pkgname=lieve
+pkgver=0.1.1
+pkgrel=1
+pkgdesc='Lightweight native code editor for KDE Plasma, with the look and shortcuts of VS Code'
+arch=('x86_64' 'aarch64')
+url='https://github.com/giannoccarol/lieve'
+license=('GPL-3.0-only')
+depends=('qt6-base' 'qt6-svg' 'ktexteditor' 'kparts' 'kxmlgui' 'kcoreaddons' 'kconfig' 'kwidgetsaddons'
+         'kdbusaddons' 'kwindowsystem' 'ki18n' 'syntax-highlighting' 'konsole' 'ripgrep' 'git' 'hicolor-icon-theme')
+makedepends=('qt6-tools' 'pkgconf')
+optdepends=('nodejs: Prettier and ESLint on save, with the project'"'"'s own packages'
+            'typescript-language-server: go to definition, errors and completion for TypeScript/JavaScript')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('3ffcb7bfdff62abb54831183c1eb45749512f7eab081e89f24420b720bf569be')
+
+build() {
+  cd "$pkgname-$pkgver"
+  make PREFIX=/usr PACKAGED=1
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  make DESTDIR="$pkgdir" PREFIX=/usr install
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  rm -f "$pkgdir/usr/share/applications/mimeinfo.cache" # left by older Makefiles
+}

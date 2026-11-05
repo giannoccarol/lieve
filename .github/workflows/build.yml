@@ -15,3 +15,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: make -j"$(nproc)"
+      - name: Test
+        run: make -j"$(nproc)" check

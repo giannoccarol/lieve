@@ -5,6 +5,9 @@ PREFIX ?= $(HOME)/.local
 CXX ?= g++
 CXXFLAGS ?= -O2 -pipe
 CXXFLAGS += -std=c++20 -fPIC -Wall -Wextra -Wno-unused-parameter
+# Distribution packages build with PACKAGED=1: updates then come from the
+# package manager, not from Lieve's own updater.
+CXXFLAGS += $(if $(PACKAGED),-DLIEVE_PACKAGED)
 
 MOC ?= $(firstword $(wildcard /usr/lib/qt6/moc /usr/lib/qt6/libexec/moc /usr/libexec/qt6/moc /usr/lib64/qt6/libexec/moc))
 RCC ?= $(firstword $(wildcard /usr/lib/qt6/rcc /usr/lib/qt6/libexec/rcc /usr/libexec/qt6/rcc /usr/lib64/qt6/libexec/rcc))
@@ -73,12 +76,27 @@ build/moc_%.o: build/moc_%.cpp
 build:
 	mkdir -p build
 
+# Tests: make check (they need git and run without a display).
+TESTS := $(patsubst tests/%.cpp,build/tests/%,$(wildcard tests/*_test.cpp))
+
+check: $(TESTS)
+	@for t in $(TESTS); do QT_QPA_PLATFORM=offscreen $$t || exit 1; done
+
+build/tests/%: tests/%.cpp | build/tests
+	$(CXX) $(CXXFLAGS) $(QT_CFLAGS) $(KF_CFLAGS) -Isrc -o $@ $(filter %.cpp %.o,$^) $(QT_LIBS) $(KF_LIBS)
+
+build/tests/blame_test: build/blame.o build/moc_blame.o
+build/tests/settings_test: build/settings.o
+
+build/tests:
+	mkdir -p build/tests
+
 install: lieve
 	install -Dm755 lieve $(DESTDIR)$(PREFIX)/bin/lieve
 	install -Dm644 data/lieve.desktop $(DESTDIR)$(PREFIX)/share/applications/lieve.desktop
 	sed -i 's|@BIN@|$(PREFIX)/bin/lieve|g' $(DESTDIR)$(PREFIX)/share/applications/lieve.desktop
 	install -Dm644 data/lieve.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/lieve.svg
-	-update-desktop-database $(DESTDIR)$(PREFIX)/share/applications 2>/dev/null
+	$(if $(DESTDIR),,-update-desktop-database $(PREFIX)/share/applications 2>/dev/null)
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/lieve
@@ -88,6 +106,6 @@ uninstall:
 clean:
 	rm -rf build lieve
 
-.PHONY: all install uninstall clean translations
+.PHONY: all install uninstall clean translations check
 
 -include $(OBJ:.o=.d)
