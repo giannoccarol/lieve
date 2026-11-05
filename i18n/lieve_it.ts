@@ -40,6 +40,75 @@
     </message>
 </context>
 <context>
+    <name>CommandPalette</name>
+    <message>
+        <location filename="../src/commandpalette.cpp" line="+77"/>
+        <source>Change Language Mode</source>
+        <translation>Cambia modalità linguaggio</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Change File Encoding</source>
+        <translation>Cambia codifica file</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Change End of Line Sequence</source>
+        <translation>Cambia sequenza di fine riga</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Toggle Word Wrap</source>
+        <translation>Attiva/disattiva a capo automatico</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Toggle Minimap</source>
+        <translation>Mostra/nascondi minimappa</translation>
+    </message>
+    <message>
+        <location line="+45"/>
+        <source>%1: %2</source>
+        <comment>category: command</comment>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <location filename="../src/commandpalette.h" line="+45"/>
+        <source>File</source>
+        <translation>File</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>View</source>
+        <translation>Visualizza</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Search</source>
+        <translation>Cerca</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Terminal</source>
+        <translation>Terminale</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Git</source>
+        <translation>Git</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Preferences</source>
+        <translation>Preferenze</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Bookmarks</source>
+        <translation>Segnalibri</translation>
+    </message>
+</context>
+<context>
     <name>Explorer</name>
     <message>
         <location filename="../src/explorer.cpp" line="+141"/>
@@ -481,7 +550,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>git non ha dato altre informazioni.</translation>
     </message>
     <message>
-        <location line="+311"/>
+        <location line="+328"/>
         <source>Couldn&apos;t stage the files</source>
         <translation>Impossibile preparare i file</translation>
     </message>
@@ -559,7 +628,7 @@ Le modifiche agli altri file andranno perse.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/mainwindow.cpp" line="+361"/>
+        <location filename="../src/mainwindow.cpp" line="+386"/>
         <source>Explorer (Ctrl+Shift+E)</source>
         <translation>Esplora risorse (Ctrl+Shift+E)</translation>
     </message>
@@ -570,12 +639,12 @@ Le modifiche agli altri file andranno perse.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+1410"/>
+        <location line="+1756"/>
         <source>Source Control (Ctrl+Shift+G)</source>
         <translation>Controllo del codice sorgente (Ctrl+Shift+G)</translation>
     </message>
     <message>
-        <location line="-1408"/>
+        <location line="-1754"/>
         <source>Side Bar (Ctrl+B)</source>
         <translation>Barra laterale (Ctrl+B)</translation>
     </message>
@@ -585,19 +654,19 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Terminale (Ctrl+J)</translation>
     </message>
     <message>
-        <location line="+197"/>
-        <location line="+822"/>
+        <location line="+209"/>
+        <location line="+1146"/>
         <source>Choose a project</source>
         <translation>Scegli un progetto</translation>
     </message>
     <message>
-        <location line="-803"/>
-        <location line="+197"/>
+        <location line="-1127"/>
+        <location line="+206"/>
         <source>Open Folder…</source>
         <translation>Apri cartella…</translation>
     </message>
     <message>
-        <location line="-188"/>
+        <location line="-197"/>
         <source>Enter to open · Ctrl+Enter to open in a new window · projects are searched in %1 (Ctrl+, to change)</source>
         <translation>Invio apre · Ctrl+Invio in una nuova finestra · progetti cercati in %1 (Ctrl+, per cambiare)</translation>
     </message>
@@ -608,18 +677,18 @@ Le modifiche agli altri file andranno perse.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+120"/>
+        <location line="+126"/>
         <source>Find in Files</source>
         <translation>Cerca nei file</translation>
     </message>
     <message>
-        <location line="-119"/>
-        <location line="+115"/>
+        <location line="-125"/>
+        <location line="+121"/>
         <source>Explorer</source>
         <translation>Esplora risorse</translation>
     </message>
     <message>
-        <location line="-114"/>
+        <location line="-120"/>
         <source>Toggle Terminal</source>
         <translation>Mostra/nascondi terminale</translation>
     </message>
@@ -630,12 +699,12 @@ Le modifiche agli altri file andranno perse.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+197"/>
+        <location line="+225"/>
         <source>Settings</source>
         <translation>Impostazioni</translation>
     </message>
     <message>
-        <location line="-160"/>
+        <location line="-188"/>
         <source>Search projects… (Enter: open · Ctrl+Enter: replace in this window)</source>
         <translation>Cerca progetto… (Invio: apri · Ctrl+Invio: sostituisci in questa finestra)</translation>
     </message>
@@ -645,7 +714,22 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Apri file rapidamente</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+5"/>
+        <source>Command Palette…</source>
+        <translation>Riquadro comandi…</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Go to Line/Column…</source>
+        <translation>Vai a riga/colonna…</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Replace in Files</source>
+        <translation>Sostituisci nei file</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>Source Control</source>
         <translation>Controllo del codice sorgente</translation>
     </message>
@@ -710,7 +794,37 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Scheda precedente</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
+        <source>Split Editor</source>
+        <translation>Dividi editor</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Focus First Editor Group</source>
+        <translation>Sposta lo stato attivo sul primo gruppo di editor</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Focus Second Editor Group</source>
+        <translation>Sposta lo stato attivo sul secondo gruppo di editor</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Focus Third Editor Group</source>
+        <translation>Sposta lo stato attivo sul terzo gruppo di editor</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Go to Next Change</source>
+        <translation>Vai alla modifica successiva</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Go to Previous Change</source>
+        <translation>Vai alla modifica precedente</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>Format Document</source>
         <translation>Formatta documento</translation>
     </message>
@@ -735,12 +849,12 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Esci</translation>
     </message>
     <message>
-        <location line="+452"/>
+        <location line="+710"/>
         <source>Open File</source>
         <translation>Apri file</translation>
     </message>
     <message>
-        <location line="+108"/>
+        <location line="+146"/>
         <source>Close</source>
         <translation>Chiudi</translation>
     </message>
@@ -775,7 +889,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Mostra in Esplora risorse</translation>
     </message>
     <message>
-        <location line="+52"/>
+        <location line="+54"/>
         <source>Detached HEAD</source>
         <translation>HEAD staccato</translation>
     </message>
@@ -855,7 +969,12 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Prettier — clic: formatta ora</translation>
     </message>
     <message>
-        <location line="+61"/>
+        <location line="+5"/>
+        <source>ESLint fixes problems on save — click to fix now</source>
+        <translation>ESLint corregge i problemi al salvataggio — clic: correggi ora</translation>
+    </message>
+    <message>
+        <location line="+66"/>
         <source>You, now • Uncommitted changes</source>
         <translation>Tu, adesso • Modifiche non ancora committate</translation>
     </message>
@@ -960,7 +1079,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Più tardi</translation>
     </message>
     <message>
-        <location line="+48"/>
+        <location line="+46"/>
         <source>Indent Using Spaces</source>
         <translation>Rientra con spazi</translation>
     </message>
@@ -985,7 +1104,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Controllo del codice sorgente (Ctrl+Shift+G) — %1 modifiche</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+51"/>
         <source>%1 (Changes)</source>
         <translation>%1 (modifiche)</translation>
     </message>
@@ -1012,12 +1131,12 @@ Le modifiche agli altri file andranno perse.</translation>
 </translation>
     </message>
     <message>
-        <location line="+154"/>
+        <location line="+155"/>
         <source>Prettier is not installed in this project (node_modules/prettier).</source>
         <translation>Prettier non è installato in questo progetto (node_modules/prettier).</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+21"/>
         <source>Not formatted: the file is excluded by .prettierignore.</source>
         <translation>Nessuna formattazione: il file è escluso da .prettierignore.</translation>
     </message>
@@ -1031,28 +1150,49 @@ Le modifiche agli altri file andranno perse.</translation>
         <source>Not formatted: Prettier does not support this file type.</source>
         <translation>Nessuna formattazione: Prettier non supporta questo tipo di file.</translation>
     </message>
+    <message>
+        <location line="+291"/>
+        <source>The file has changed on disk since these unsaved changes were made: saving them overwrites the new version.</source>
+        <translation>Il file è cambiato sul disco dopo queste modifiche non salvate: salvandole si sovrascrive la versione nuova.</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1 no longer exists: its unsaved changes are in this new document.</source>
+        <translation>%1 non esiste più: le sue modifiche non salvate sono in questo nuovo documento.</translation>
+    </message>
 </context>
 <context>
     <name>Prettier</name>
     <message>
-        <location filename="../src/prettier.cpp" line="+113"/>
+        <location filename="../src/prettier.cpp" line="+298"/>
         <source>cannot run %1</source>
         <translation>impossibile avviare %1</translation>
     </message>
     <message>
-        <location line="+197"/>
+        <location line="+255"/>
         <source>Node.js not found: set its path in Settings (Ctrl+,), section [format] node=</source>
         <translation>Node.js non trovato: indicalo in Impostazioni (Ctrl+,), sezione [format] node=</translation>
     </message>
     <message>
-        <location line="+45"/>
+        <location line="+79"/>
         <source>Prettier failed to start: %1</source>
         <translation>Prettier non si avvia: %1</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>ESLint failed to start: %1</source>
+        <translation>ESLint non si avvia: %1</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>Prettier didn&apos;t respond in time: file saved without formatting.</source>
         <translation>Prettier non ha risposto in tempo: file salvato senza formattare.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+26"/>
+        <source>ESLint didn&apos;t respond in time: its fixes were not applied.</source>
+        <translation>ESLint non ha risposto in tempo: le sue correzioni non sono state applicate.</translation>
     </message>
 </context>
 <context>
@@ -1176,15 +1316,87 @@ Le modifiche agli altri file andranno perse.</translation>
 <context>
     <name>QuickOpen</name>
     <message>
-        <location filename="../src/quickopen.cpp" line="+46"/>
+        <location filename="../src/quickopen.cpp" line="+90"/>
+        <source>Type the name of a command to run.</source>
+        <translation>Digita il nome di un comando da eseguire.</translation>
+    </message>
+    <message>
+        <location line="+49"/>
         <source>Search files by name (append :line to go to a line)</source>
         <translation>Cerca file per nome (aggiungi :riga per andare a una riga)</translation>
+    </message>
+    <message>
+        <location line="+230"/>
+        <source>recently used</source>
+        <comment>commands</comment>
+        <translation>usati di recente</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>other commands</source>
+        <translation>altri comandi</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>No matching commands</source>
+        <translation>Nessun comando corrispondente</translation>
+    </message>
+    <message>
+        <location line="+28"/>
+        <source>current</source>
+        <comment>the language or encoding in use</comment>
+        <translation>attuale</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>No matching results</source>
+        <translation>Nessun risultato corrispondente</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Open a text editor first to go to a line.</source>
+        <translation>Apri prima un editor di testo per andare a una riga.</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Current Line: %1, Character: %2. Type a line number between 1 and %3 to navigate to.</source>
+        <translation>Riga attuale: %1, carattere: %2. Digita un numero di riga tra 1 e %3 per spostarti lì.</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Go to line %1.</source>
+        <translation>Vai alla riga %1.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Go to line %1 and character %2.</source>
+        <translation>Vai alla riga %1, carattere %2.</translation>
     </message>
 </context>
 <context>
     <name>SearchPanel</name>
     <message>
-        <location filename="../src/searchpanel.cpp" line="+75"/>
+        <location filename="../src/searchpanel.cpp" line="+300"/>
+        <source>Dismiss</source>
+        <translation>Ignora</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Replace All in File</source>
+        <translation>Sostituisci tutto nel file</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+78"/>
+        <location line="+556"/>
+        <location line="+20"/>
+        <location line="+24"/>
+        <location line="+295"/>
+        <source>Replace</source>
+        <translation>Sostituisci</translation>
+    </message>
+    <message>
+        <location line="-927"/>
         <source>SEARCH</source>
         <translation>CERCA</translation>
     </message>
@@ -1194,7 +1406,12 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Mostra file da includere/escludere</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+12"/>
+        <source>Toggle Replace</source>
+        <translation>Mostra/nascondi Sostituisci</translation>
+    </message>
+    <message>
+        <location line="+6"/>
         <source>Search</source>
         <translation>Cerca</translation>
     </message>
@@ -1214,7 +1431,12 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Espressione regolare</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+7"/>
+        <source>Replace All (Ctrl+Alt+Enter)</source>
+        <translation>Sostituisci tutto (Ctrl+Alt+Invio)</translation>
+    </message>
+    <message>
+        <location line="+22"/>
         <source>Files to include (e.g. src, *.ts, src/**/*.html)</source>
         <translation>File da includere (es. src, *.ts, src/**/*.html)</translation>
     </message>
@@ -1224,7 +1446,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>File da escludere (es. *.spec.ts, dist)</translation>
     </message>
     <message>
-        <location line="+157"/>
+        <location line="+234"/>
         <source>ripgrep (rg) not found: install it with “pacman -S ripgrep”.</source>
         <translation>ripgrep (rg) non trovato: installalo con «pacman -S ripgrep».</translation>
     </message>
@@ -1234,12 +1456,13 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Ricerca in corso…</translation>
     </message>
     <message>
-        <location line="+134"/>
+        <location line="+150"/>
+        <location line="+14"/>
         <source>No results found.</source>
         <translation>Nessun risultato.</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+2"/>
         <source>%1 results in 1 file (limit reached, narrow your search)</source>
         <translation>%1 risultati in 1 file (limite raggiunto, restringi la ricerca)</translation>
     </message>
@@ -1262,6 +1485,123 @@ Le modifiche agli altri file andranno perse.</translation>
         <location line="+2"/>
         <source>%1 results in %2 files</source>
         <translation>%1 risultati in %2 file</translation>
+    </message>
+    <message>
+        <location line="+118"/>
+        <location line="+20"/>
+        <source>This regular expression cannot be used to replace: %1</source>
+        <translation>Questa espressione regolare non si può usare per sostituire: %1</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>Replace 1 occurrence across 1 file?</source>
+        <translation>Sostituire 1 occorrenza in 1 file?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Replace %1 occurrences across 1 file?</source>
+        <translation>Sostituire %1 occorrenze in 1 file?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Replace %1 occurrences across %2 files?</source>
+        <translation>Sostituire %1 occorrenze in %2 file?</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Replace 1 occurrence across 1 file with &apos;%1&apos;?</source>
+        <translation>Sostituire 1 occorrenza in 1 file con “%1”?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Replace %1 occurrences across 1 file with &apos;%2&apos;?</source>
+        <translation>Sostituire %1 occorrenze in 1 file con “%2”?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Replace %1 occurrences across %2 files with &apos;%3&apos;?</source>
+        <translation>Sostituire %1 occorrenze in %2 file con “%3”?</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Replace All</source>
+        <translation>Sostituisci tutto</translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>Replaced 1 occurrence across 1 file.</source>
+        <translation>Sostituita 1 occorrenza in 1 file.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Replaced %1 occurrences across 1 file.</source>
+        <translation>Sostituite %1 occorrenze in 1 file.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Replaced %1 occurrences across %2 files.</source>
+        <translation>Sostituite %1 occorrenze in %2 file.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Replaced 1 occurrence across 1 file with &apos;%1&apos;.</source>
+        <translation>Sostituita 1 occorrenza in 1 file con “%1”.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Replaced %1 occurrences across 1 file with &apos;%2&apos;.</source>
+        <translation>Sostituite %1 occorrenze in 1 file con “%2”.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Replaced %1 occurrences across %2 files with &apos;%3&apos;.</source>
+        <translation>Sostituite %1 occorrenze in %2 file con “%3”.</translation>
+    </message>
+    <message>
+        <location line="+77"/>
+        <source>%1 no longer exists.</source>
+        <translation>%1 non esiste più.</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+111"/>
+        <source>%1 is read-only.</source>
+        <translation>%1 è di sola lettura.</translation>
+    </message>
+    <message>
+        <location line="-74"/>
+        <source>%1 could not be read.</source>
+        <translation>Impossibile leggere %1.</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1 is not a UTF-8 text file.</source>
+        <translation>%1 non è un file di testo UTF-8.</translation>
+    </message>
+    <message>
+        <location line="+70"/>
+        <source>%1 could not be written: %2</source>
+        <translation>Impossibile scrivere %1: %2</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1 has changed since the search.</source>
+        <translation>%1 è cambiato dopo la ricerca.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1: some matches could not be found again; replace them in the editor.</source>
+        <translation>%1: alcune corrispondenze non sono state ritrovate; sostituiscile nell’editor.</translation>
+    </message>
+    <message>
+        <location line="+53"/>
+        <source>1 occurrence was not replaced.</source>
+        <translation>1 occorrenza non è stata sostituita.</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>%1 occurrences were not replaced.</source>
+        <translation>%1 occorrenze non sono state sostituite.</translation>
     </message>
 </context>
 <context>
@@ -1349,7 +1689,11 @@ roots=
 ; Prettier on save: auto = like VS Code (the project&apos;s or your editor.formatOnSave),
 ; or true / false. Needs Prettier installed in the project (node_modules).
 onSave=auto
-; Minutes of inactivity after which the Prettier process exits.
+; ESLint fixes on save, before Prettier: auto = like VS Code (source.fixAll.eslint
+; in the project&apos;s or your editor.codeActionsOnSave), or true / false.
+; Needs ESLint installed in the project (node_modules).
+eslint=auto
+; Minutes of inactivity after which the Prettier (and ESLint) process exits.
 keepAliveMinutes=10
 ; Path to node. Empty = found automatically (PATH, mise, volta, nvm, fnm).
 node=
@@ -1359,14 +1703,18 @@ node=
 ; Prettier al salvataggio: auto = come VS Code (editor.formatOnSave del progetto
 ; o tuo), oppure true / false. Serve Prettier installato nel progetto (node_modules).
 onSave=auto
-; Minuti di inattivita dopo cui il processo di Prettier si chiude.
+; Correzioni di ESLint al salvataggio, prima di Prettier: auto = come VS Code
+; (source.fixAll.eslint in editor.codeActionsOnSave del progetto o tuo), oppure
+; true / false. Serve ESLint installato nel progetto (node_modules).
+eslint=auto
+; Minuti di inattivita dopo cui il processo di Prettier (ed ESLint) si chiude.
 keepAliveMinutes=10
 ; Percorso di node. Vuoto = cercato da solo (PATH, mise, volta, nvm, fnm).
 node=
 </translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+15"/>
         <source>
 [git]
 ; auto = like VS Code (git.enableSmartCommit and git.autofetch), or true / false.
@@ -1377,6 +1725,9 @@ autofetch=auto
 autofetchMinutes=3
 ; At the end of the cursor line: author, date and message of the commit (like GitLens).
 inlineBlame=true
+; Colored marks next to the line numbers on the lines added, changed or deleted
+; compared to the staged version of the file (like VS Code).
+gutter=true
 </source>
         <translation>
 [git]
@@ -1388,10 +1739,32 @@ autofetch=auto
 autofetchMinutes=3
 ; Alla fine della riga del cursore: autore, data e messaggio del commit (come GitLens).
 inlineBlame=true
+; Segni colorati accanto ai numeri di riga sulle righe aggiunte, modificate o eliminate
+; rispetto alla versione preparata del file (come VS Code).
+gutter=true
 </translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+43"/>
+        <source>
+[files]
+; Hot exit, like VS Code: closing a window or quitting does not ask about unsaved files,
+; their changes come back (still unsaved) when the project is opened again.
+; false = ask to save them. Unsaved changes are always backed up while you type,
+; so a crash loses nothing.
+hotExit=true
+</source>
+        <translation>
+[files]
+; Hot exit, come VS Code: chiudendo una finestra o uscendo non viene chiesto nulla sui file
+; non salvati, le modifiche tornano (ancora da salvare) quando il progetto viene riaperto.
+; false = chiede se salvarli. Le modifiche non salvate vengono comunque copiate mentre scrivi:
+; un crash non fa perdere nulla.
+hotExit=true
+</translation>
+    </message>
+    <message>
+        <location line="-28"/>
         <source>
 [ui]
 ; editor = the window colors follow the editor theme (like VS Code);
@@ -1447,6 +1820,509 @@ check=true
 ; e la propone nella barra di stato (l&apos;aggiornamento parte solo se lo chiedi).
 check=true
 </translation>
+    </message>
+</context>
+<context>
+    <name>SettingsDialog</name>
+    <message>
+        <location filename="../src/settingsdialog.cpp" line="+156"/>
+        <location line="+696"/>
+        <source>Settings</source>
+        <translation>Impostazioni</translation>
+    </message>
+    <message>
+        <location line="-668"/>
+        <source>Search settings</source>
+        <translation>Cerca impostazioni</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Open lieve.conf</source>
+        <translation>Apri lieve.conf</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Edit every setting in the file, with its comments: %1</source>
+        <translation>Modifica tutte le impostazioni nel file, con i loro commenti: %1</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>Some changes take effect after a restart.</source>
+        <translation>Alcune modifiche avranno effetto dopo il riavvio.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Restart</source>
+        <translation>Riavvia</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>General</source>
+        <translation>Generale</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Automatic (%1)</source>
+        <translation>Automatica (%1)</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Language</source>
+        <translation>Lingua</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Language of Lieve&apos;s interface. Automatic follows the system.</source>
+        <translation>Lingua dell&apos;interfaccia di Lieve. Automatica segue quella del sistema.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Project Folders</source>
+        <translation>Cartelle dei progetti</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Folders to look for projects in (git repositories, also one level down), separated by commas.</source>
+        <translation>Cartelle in cui cercare i progetti (repository git, anche un livello sotto), separate da virgole.</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>None detected automatically</source>
+        <translation>Nessuna rilevata automaticamente</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Detected automatically: %1</source>
+        <translation>Rilevate automaticamente: %1</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Add Folder…</source>
+        <translation>Aggiungi cartella…</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add Folder</source>
+        <translation>Aggiungi cartella</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Appearance</source>
+        <translation>Aspetto</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <location line="+34"/>
+        <location line="+112"/>
+        <location line="+38"/>
+        <location line="+248"/>
+        <source>Automatic</source>
+        <translation>Automatico</translation>
+    </message>
+    <message>
+        <location line="-421"/>
+        <source>Color Theme</source>
+        <translation>Tema colori</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Colors of the editor, which the window follows too. Automatic: VSCodium Dark with a dark system theme, Breeze Light with a light one.</source>
+        <translation>Colori dell&apos;editor, seguiti anche dalla finestra. Automatico: VSCodium Dark con il tema scuro di sistema, Breeze Light con quello chiaro.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Window Colors</source>
+        <translation>Colori della finestra</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The colors of side bar, panels and menus: from the editor&apos;s color theme, like VS Code, or Plasma&apos;s.</source>
+        <translation>I colori di barra laterale, pannelli e menu: dal tema colori dell&apos;editor, come VS Code, oppure quelli di Plasma.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Editor color theme</source>
+        <translation>Tema colori dell&apos;editor</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <location line="+7"/>
+        <source>System (Plasma)</source>
+        <translation>Sistema (Plasma)</translation>
+    </message>
+    <message>
+        <location line="-2"/>
+        <source>Title Bar</source>
+        <translation>Barra del titolo</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Lieve&apos;s own title bar, with the search box, or Plasma&apos;s.</source>
+        <translation>La barra del titolo di Lieve, con la casella di ricerca, oppure quella di Plasma.</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>File Icon Theme</source>
+        <translation>Tema icona file</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Icons of files and folders. Automatic uses the icon theme set in VS Code (workbench.iconTheme).</source>
+        <translation>Icone di file e cartelle. Automatico usa il tema di icone impostato in VS Code (workbench.iconTheme).</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>System icons</source>
+        <translation>Icone di sistema</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Text Editor</source>
+        <translation>Editor di testo</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Default (%1)</source>
+        <comment>font family</comment>
+        <translation>Predefinito (%1)</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Font Family</source>
+        <translation>Famiglia di caratteri</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Font of the editor. Default is the system fixed-width font (System Settings &gt; Fonts).</source>
+        <translation>Carattere dell&apos;editor. Predefinito: il carattere a larghezza fissa del sistema (Impostazioni di sistema &gt; Caratteri).</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Default (%1)</source>
+        <comment>font size</comment>
+        <translation>Predefinita (%1)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Font Size</source>
+        <translation>Dimensione carattere</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Font size of the editor, in points.</source>
+        <translation>Dimensione del carattere dell&apos;editor, in punti.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Minimap</source>
+        <translation>Minimappa</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Shows a miniature of the file in the scroll bar.</source>
+        <translation>Mostra una miniatura del file nella barra di scorrimento.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Word Wrap</source>
+        <translation>A capo automatico</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Wraps long lines at the edge of the editor.</source>
+        <translation>Manda a capo le righe lunghe al bordo dell&apos;editor.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>VS Code Shortcuts</source>
+        <translation>Scorciatoie di VS Code</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>VS Code-style keyboard shortcuts in the editor (Ctrl+D, Alt+Up/Down, Ctrl+Shift+K, Ctrl+H, …).</source>
+        <translation>Scorciatoie da tastiera in stile VS Code nell&apos;editor (Ctrl+D, Alt+Su/Giù, Ctrl+Shift+K, Ctrl+H, …).</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Files</source>
+        <translation>File</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Hot Exit</source>
+        <translation>Uscita rapida</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Keeps unsaved changes when a window or Lieve is closed, without asking, and brings them back next time.</source>
+        <translation>Conserva le modifiche non salvate quando si chiude una finestra o Lieve, senza chiedere, e le ripropone la volta successiva.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Hidden in the Explorer</source>
+        <translation>Nascosti in Esplora risorse</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Names of files and folders hidden in the Explorer, separated by commas.</source>
+        <translation>Nomi di file e cartelle nascosti in Esplora risorse, separati da virgole.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Excluded from Search</source>
+        <translation>Esclusi dalla ricerca</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Globs excluded from search and Quick Open, separated by commas (files in .gitignore are excluded already).</source>
+        <translation>Glob esclusi da ricerca e apertura rapida, separati da virgole (i file in .gitignore sono già esclusi).</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Search Results Limit</source>
+        <translation>Limite dei risultati di ricerca</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Search stops after this many results.</source>
+        <translation>La ricerca si ferma dopo questo numero di risultati.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Terminal</source>
+        <translation>Terminale</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Automatic (%1, your login shell)</source>
+        <translation>Automatica (%1, quella del tuo utente)</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Default Shell</source>
+        <translation>Shell predefinita</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Shell for new terminals. Another one can be started from the menu next to the terminal&apos;s +.</source>
+        <translation>Shell dei nuovi terminali. Se ne può avviare un&apos;altra dal menu accanto al + del terminale.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Editor Colors</source>
+        <translation>Colori dell&apos;editor</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The terminal uses the same colors as the editor (your Konsole profiles are not touched).</source>
+        <translation>Il terminale usa gli stessi colori dell&apos;editor (i tuoi profili di Konsole non vengono toccati).</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Inline Blame</source>
+        <translation>Blame in linea</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Author, date and message of the last commit at the end of the cursor line, like GitLens.</source>
+        <translation>Autore, data e messaggio dell&apos;ultimo commit alla fine della riga del cursore, come GitLens.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Change Marks</source>
+        <translation>Indicatori delle modifiche</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Marks added, changed and deleted lines next to the line numbers.</source>
+        <translation>Segna le righe aggiunte, modificate ed eliminate accanto ai numeri di riga.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Smart Commit</source>
+        <translation>Commit intelligente</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Committing with no staged changes stages and commits all of them. Automatic follows VS Code (git.enableSmartCommit).</source>
+        <translation>Un commit senza modifiche preparate le prepara e le include tutte. Automatico segue VS Code (git.enableSmartCommit).</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Autofetch</source>
+        <translation>Recupero automatico</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Fetches from the remote every few minutes. Automatic follows VS Code (git.autofetch).</source>
+        <translation>Recupera (git fetch) dal server remoto ogni pochi minuti. Automatico segue VS Code (git.autofetch).</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Autofetch Interval</source>
+        <translation>Intervallo del recupero automatico</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Minutes between two fetches. Automatic follows VS Code (git.autofetchPeriod, 3 minutes).</source>
+        <translation>Minuti tra un recupero e il successivo. Automatico segue VS Code (git.autofetchPeriod, 3 minuti).</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Formatting</source>
+        <translation>Formattazione</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Format on Save</source>
+        <translation>Formatta al salvataggio</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Formats with Prettier when saving, if the project has Prettier installed. Automatic follows VS Code (editor.formatOnSave).</source>
+        <translation>Formatta con Prettier al salvataggio, se il progetto ha Prettier installato. Automatico segue VS Code (editor.formatOnSave).</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>ESLint Fix on Save</source>
+        <translation>Correzioni ESLint al salvataggio</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Fixes ESLint problems when saving. Automatic follows VS Code (editor.codeActionsOnSave).</source>
+        <translation>Corregge i problemi segnalati da ESLint al salvataggio. Automatico segue VS Code (editor.codeActionsOnSave).</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Node.js Path</source>
+        <translation>Percorso di Node.js</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>The node program that runs Prettier. Empty: found automatically (PATH, mise, volta, nvm, fnm).</source>
+        <translation>Il programma node che esegue Prettier. Vuoto: cercato automaticamente (PATH, mise, volta, nvm, fnm).</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Not found</source>
+        <translation>Non trovato</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Found automatically: %1</source>
+        <translation>Trovato automaticamente: %1</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Prettier Idle Time</source>
+        <translation>Inattività di Prettier</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Minutes of inactivity after which the Prettier process exits.</source>
+        <translation>Minuti di inattività dopo cui il processo di Prettier si chiude.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Languages</source>
+        <translation>Linguaggi</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Language Servers</source>
+        <translation>Server di linguaggio</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Go to definition, errors and completion from language servers. Automatic uses the servers it finds installed.</source>
+        <translation>Vai alla definizione, errori e completamento dai server di linguaggio. Automatico usa i server che trova installati.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+248"/>
+        <source>Off</source>
+        <translation>Disattivato</translation>
+    </message>
+    <message>
+        <location line="-245"/>
+        <source>Updates</source>
+        <translation>Aggiornamenti</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Check for Updates</source>
+        <translation>Controlla aggiornamenti</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Checks now and then for a new version of Lieve on GitHub and offers it in the status bar. It only updates when you ask.</source>
+        <translation>Controlla ogni tanto se su GitHub c&apos;è una nuova versione di Lieve e la propone nella barra di stato. L&apos;aggiornamento parte solo se lo chiedi.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>No settings found.</source>
+        <translation>Nessuna impostazione trovata.</translation>
+    </message>
+    <message>
+        <location line="+116"/>
+        <source>Values: %1.</source>
+        <translation>Valori: %1.</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>Restart Lieve to apply</source>
+        <translation>Riavvia Lieve per applicare</translation>
+    </message>
+    <message>
+        <location line="+104"/>
+        <source>On</source>
+        <translation>Attivato</translation>
+    </message>
+    <message>
+        <location line="+72"/>
+        <source>System (Plasma&apos;s)</source>
+        <translation>Sistema (quello di Plasma)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Lieve (burgundy)</source>
+        <translation>Lieve (bordeaux)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Custom…</source>
+        <translation>Personalizzato…</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Choose the color</source>
+        <translation>Scegli il colore</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <location line="+17"/>
+        <source>Accent Color</source>
+        <translation>Colore d&apos;accento</translation>
+    </message>
+    <message>
+        <location line="-16"/>
+        <source>Color of buttons, selections and focus frames.</source>
+        <translation>Colore di pulsanti, selezioni e bordi dell&apos;elemento attivo.</translation>
+    </message>
+    <message>
+        <location line="+48"/>
+        <source>Could not save the setting in %1.</source>
+        <translation>Impossibile salvare l&apos;impostazione in %1.</translation>
+    </message>
+    <message>
+        <location line="+59"/>
+        <source>1 setting found</source>
+        <translation>1 impostazione trovata</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>%1 settings found</source>
+        <translation>%1 impostazioni trovate</translation>
     </message>
 </context>
 <context>
