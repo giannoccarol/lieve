@@ -213,11 +213,31 @@ const char kUpdatesSection[] = QT_TRANSLATE_NOOP("Settings", R"(
 check=true
 )");
 
+const char kLspSection[] = QT_TRANSLATE_NOOP("Settings", R"(
+[lsp]
+; Language servers: Go to Definition (F12, Ctrl+click), problems (F8), hover,
+; completion and Go to Symbol (Ctrl+Shift+O). auto = a server starts when a file
+; of its language is opened, if it is installed (in the project's node_modules
+; or globally), and stops a few minutes after its last file is closed; false = never.
+; TypeScript and JavaScript: npm install -g typescript-language-server
+; (it uses the project's TypeScript). Angular templates (.html, a lot of memory
+; on large projects): npm install -g @angular/language-server
+enabled=auto
+; Command of each server. Empty = found automatically; false = not used.
+; Example with TypeScript 7 (native, lighter): typescript=~/lsp/node_modules/.bin/tsc --lsp --stdio
+typescript=
+angular=
+; Minutes a server keeps running after the last file of its language is closed.
+idleMinutes=5
+; Memory limit of the TypeScript server (tsserver), in MB.
+maxTsServerMemory=3072
+)");
+
 struct Section {
     const char *header;
     const char *text;
 };
-constexpr Section kLateSections[] = {{"[projects]", kProjectsSection}, {"[format]", kFormatSection}, {"[git]", kGitSection}, {"[ui]", kUiSection}, {"[updates]", kUpdatesSection}};
+constexpr Section kLateSections[] = {{"[projects]", kProjectsSection}, {"[format]", kFormatSection}, {"[git]", kGitSection}, {"[ui]", kUiSection}, {"[updates]", kUpdatesSection}, {"[lsp]", kLspSection}};
 }
 
 void ensureConfigFile()

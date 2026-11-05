@@ -1,5 +1,6 @@
 #include "gitpanel.h"
 #include "jumplist.h"
+#include "lsp.h"
 #include "mainwindow.h"
 #include "quickopen.h"
 #include "settings.h"
@@ -142,6 +143,12 @@ void setupTestHooks(QApplication &app)
                     view->document()->documentSave();
                     qInfo().noquote() << "save-ms" << timer.elapsed() << "cursor" << view->cursorPosition().line() << view->cursorPosition().column();
                 });
+            }
+        }
+        const QString lspTest = qEnvironmentVariable("LIEVE_TEST_LSP"); // steps, see LspManager::runTest()
+        if (!lspTest.isEmpty()) {
+            if (auto *lsp = window->findChild<Lieve::LspManager *>()) {
+                lsp->runTest(lspTest);
             }
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_KEYS")) {
