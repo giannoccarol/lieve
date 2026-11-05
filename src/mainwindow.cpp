@@ -10,6 +10,7 @@
 #include "quickopen.h"
 #include "searchpanel.h"
 #include "settings.h"
+#include "settingsdialog.h"
 #include "statusbar.h"
 #include "tabview.h"
 #include "terminalpanel.h"
@@ -1295,8 +1296,50 @@ void MainWindow::openFileDialog()
 
 void MainWindow::openSettings()
 {
-    ensureConfigFile();
-    openFile(configFile());
+    SettingsDialog::showFor(this);
+}
+
+// The Settings window changed lieve.conf: applies to the open editors what
+// can change without a restart (font, minimap, word wrap, inline blame).
+void MainWindow::applySettings()
+{
+    QSettings &c = config();
+    const bool inlineBlame = c.value(QStringLiteral("git/inlineBlame"), true).toBool();
+    const QString family = c.value(QStringLiteral("editor/fontFamily")).toString().trimmed();
+    const double size = c.value(QStringLiteral("editor/fontSize"), 0).toDouble();
+    QFont font = KTextEditor::Editor::instance()->font(); // none configured: the editor's default
+    if (!family.isEmpty() || size > 0) {
+        font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        if (!family.isEmpty()) {
+            font.setFamily(family);
+        }
+        if (size > 0) {
+            font.setPointSizeF(size);
+        }
+    }
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        KTextEditor::View *view = viewAt(i);
+        if (!view) {
+            continue;
+        }
+        view->setConfigValue(QStringLiteral("scrollbar-minimap"), c.value(QStringLiteral("editor/minimap"), false).toBool());
+        view->setConfigValue(QStringLiteral("dynamic-word-wrap"), c.value(QStringLiteral("editor/wordWrap"), false).toBool());
+        view->setConfigValue(QStringLiteral("font"), font);
+        if (!inlineBlame && m_blameNotes.contains(view)) {
+            KTextEditor::InlineNoteProvider *notes = m_blameNotes.take(view);
+            view->unregisterInlineNoteProvider(notes);
+            delete notes;
+        } else if (inlineBlame && !m_blameNotes.contains(view)) {
+            auto *notes = new BlameNotes;
+            notes->m_doc = view->document();
+            view->registerInlineNoteProvider(notes);
+            m_blameNotes.insert(view, notes);
+            connect(view, &QObject::destroyed, this, [this, view] {
+                delete m_blameNotes.take(view);
+            });
+        }
+    }
+    showBlame();
 }
 
 void MainWindow::cycleTab(int step)

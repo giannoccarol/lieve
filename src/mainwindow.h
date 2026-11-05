@@ -68,6 +68,8 @@ public:
     KTextEditor::View *openFile(const QString &path, int line = -1, int column = 0, int selectLength = 0);
     void showSearch(const QString &text = QString());
     void setTerminalVisible(bool visible);
+    // Re-reads the settings that apply to open editors without a restart.
+    void applySettings();
 
 Q_SIGNALS:
     void projectChanged();

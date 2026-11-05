@@ -4,6 +4,7 @@
 #include <QKeySequence>
 #include <QList>
 #include <QPointer>
+#include <QStringList>
 #include <QWidget>
 
 class KXMLGUIClient;
@@ -31,6 +32,10 @@ public:
     void newTerminal(const QString &dir = QString(), const QString &shell = QString());
     void focusCurrent();
     void closeAll();
+    // For [terminal] shell=: the names of the installed shells ("fish") and
+    // of the login shell, the one "auto" runs.
+    static QStringList shellNames();
+    static QString loginShellName();
 
 Q_SIGNALS:
     void hideRequested();

@@ -123,14 +123,24 @@ void Updater::update()
 
 void Updater::restart()
 {
-    // Start the new Lieve only once this one has exited, otherwise it would
-    // hand its arguments to us (single instance) and quit.
-    const QString pid = QString::number(QCoreApplication::applicationPid());
-    const QString exe = prefix() + QStringLiteral("/bin/lieve");
-    QProcess::startDetached(QStringLiteral("sh"),
-                            {QStringLiteral("-c"),
-                             QStringLiteral("while kill -0 %1 2>/dev/null; do sleep 0.2; done; exec \"%2\"").arg(pid, exe)});
-    WindowManager::instance().closeAll();
+    const QSet<QString> projects = WindowManager::instance().openProjects();
+    if (!WindowManager::instance().closeAll()) {
+        return; // cancelled on an unsaved file: keep running
+    }
+    // The installed copy (maybe just updated), or this one when run from where it was built.
+    QString exe = prefix() + QStringLiteral("/bin/lieve");
+    if (!QFileInfo(exe).isExecutable()) {
+        exe = QCoreApplication::applicationFilePath();
+    }
+    // Start the new Lieve, with the same projects, only once this one has
+    // exited, otherwise it would hand its arguments to us (single instance) and quit.
+    QStringList args{QStringLiteral("-c"),
+                     QStringLiteral("while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; shift; exec \"$@\""),
+                     QStringLiteral("lieve-restart"),
+                     QString::number(QCoreApplication::applicationPid()),
+                     exe};
+    args << projects.values();
+    QProcess::startDetached(QStringLiteral("sh"), args);
 }
 
 void Updater::setState(State state)
