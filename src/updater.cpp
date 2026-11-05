@@ -1,5 +1,6 @@
 #include "updater.h"
 
+#include "mainwindow.h"
 #include "settings.h"
 #include "version.h"
 #include "windowmanager.h"
@@ -123,14 +124,27 @@ void Updater::update()
 
 void Updater::restart()
 {
+    // Close first: unsaved files go into backups (hot exit) or are asked
+    // about, and the user can still cancel.
+    WindowManager &windows = WindowManager::instance();
+    QStringList projects;
+    for (MainWindow *window : windows.windows()) {
+        if (!window->project().isEmpty()) {
+            projects << window->project();
+        }
+    }
+    if (!windows.closeAll()) {
+        return;
+    }
     // Start the new Lieve only once this one has exited, otherwise it would
-    // hand its arguments to us (single instance) and quit.
-    const QString pid = QString::number(QCoreApplication::applicationPid());
-    const QString exe = prefix() + QStringLiteral("/bin/lieve");
+    // hand its arguments to us (single instance) and quit. It reopens the
+    // projects, and with them their unsaved files.
     QProcess::startDetached(QStringLiteral("sh"),
-                            {QStringLiteral("-c"),
-                             QStringLiteral("while kill -0 %1 2>/dev/null; do sleep 0.2; done; exec \"%2\"").arg(pid, exe)});
-    WindowManager::instance().closeAll();
+                            QStringList{QStringLiteral("-c"),
+                                        QStringLiteral("while kill -0 \"$0\" 2>/dev/null; do sleep 0.2; done; exec \"$@\""),
+                                        QString::number(QCoreApplication::applicationPid()),
+                                        prefix() + QStringLiteral("/bin/lieve")}
+                                + projects);
 }
 
 void Updater::setState(State state)

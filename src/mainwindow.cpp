@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include "backups.h"
 #include "blame.h"
 #include "explorer.h"
 #include "git.h"
@@ -39,6 +40,7 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
@@ -298,10 +300,31 @@ MainWindow::MainWindow(QWidget *parent)
     m_branchTimer.setInterval(150);
     connect(&m_branchTimer, &QTimer::timeout, this, &MainWindow::updateBranch);
     connect(&m_gitWatcher, &QFileSystemWatcher::directoryChanged, &m_branchTimer, qOverload<>(&QTimer::start));
+
+    // Hot exit: started by edits, so it never runs while nothing is unsaved.
+    m_backupTimer.setSingleShot(true);
+    m_backupTimer.setInterval(1500);
+    connect(&m_backupTimer, &QTimer::timeout, this, [this] {
+        bool added = false;
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            KTextEditor::Document *doc = viewAt(i)->document();
+            const bool had = doc->property("lieveBackup").isValid();
+            backupDocument(doc);
+            added = added || (!had && doc->property("lieveBackup").isValid());
+        }
+        if (added) {
+            saveSession(); // lists the new backup with the tabs, in case Lieve crashes
+        }
+    });
 }
 
 MainWindow::~MainWindow()
 {
+    // The documents die after this body: their signals must not reach the
+    // window any more (nor drop the hot exit backups).
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        viewAt(i)->document()->disconnect(this);
+    }
     // The editor views are child widgets and die after this body: detach the
     // inline blame providers while views and window are both still whole.
     for (auto it = m_blameNotes.begin(); it != m_blameNotes.end(); ++it) {
@@ -911,9 +934,18 @@ bool MainWindow::closeProject()
     if (m_root.isEmpty()) {
         return true;
     }
-    saveSession();
-    if (!closeAllViews()) {
-        return false;
+    if (hotExit()) {
+        // The unsaved documents stay in backups: nothing to ask.
+        if (!keepUnsaved()) {
+            return false;
+        }
+        closeAllViews();
+        m_keepBackups = false;
+    } else {
+        saveSession();
+        if (!closeAllViews()) {
+            return false;
+        }
     }
     m_terminal->closeAll();
     m_terminal->hide();
@@ -1132,6 +1164,29 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc)
         const QString path = localPath(d);
         if (d->isModified() && !path.isEmpty()) {
             Formatter::instance().warmUp(path, d->text(), projectFor(path));
+        }
+    });
+    // Hot exit: unsaved text is backed up shortly after typing stops; the
+    // backup goes when the document is saved, reverted or discarded.
+    connect(doc, &KTextEditor::Document::textChanged, this, [this](KTextEditor::Document *d) {
+        if (!d->isModified() || m_root.isEmpty()) {
+            return;
+        }
+        if (!m_backupTimer.isActive()) {
+            m_backupWait.start();
+        }
+        if (m_backupWait.elapsed() < 5000) { // while typing goes on, still one every few seconds
+            m_backupTimer.start();
+        }
+    });
+    connect(doc, &KTextEditor::Document::modifiedChanged, this, [this](KTextEditor::Document *d) {
+        const QString path = localPath(d);
+        if (!d->isModified()) {
+            dropBackup(d);
+            d->setProperty("lieveDiskTime", QVariant());
+        } else if (!path.isEmpty()) {
+            // The version on disk the changes start from.
+            d->setProperty("lieveDiskTime", QFileInfo(path).lastModified().toMSecsSinceEpoch());
         }
     });
     const int index = m_tabs->count() == 0 ? 0 : m_tabs->currentIndex() + 1; // next to the current tab, like VS Code
@@ -2047,15 +2102,24 @@ void MainWindow::saveSession()
         return;
     }
 
+    // Hot exit: each tab also records its backup ("" = none); a new document
+    // (no file: path "") is kept only when it has one.
     QStringList files;
     QStringList cursors;
+    QStringList backups;
+    int activeIndex = -1;
     for (int i = 0; i < m_tabs->count(); ++i) {
         KTextEditor::View *view = viewAt(i);
         const QString path = localPath(view->document());
-        if (!path.isEmpty()) {
+        const QString backup = view->document()->property("lieveBackup").toString();
+        if (!path.isEmpty() || !backup.isEmpty()) {
+            if (view == currentView()) {
+                activeIndex = int(files.size());
+            }
             files << path;
             const KTextEditor::Cursor c = view->cursorPosition();
             cursors << QStringLiteral("%1:%2").arg(c.line()).arg(c.column());
+            backups << backup;
         }
     }
     const KTextEditor::View *active = currentView();
@@ -2063,7 +2127,9 @@ void MainWindow::saveSession()
     s.setValue(key + QStringLiteral("/path"), m_root);
     s.setValue(key + QStringLiteral("/files"), files);
     s.setValue(key + QStringLiteral("/cursors"), cursors);
+    s.setValue(key + QStringLiteral("/backups"), backups);
     s.setValue(key + QStringLiteral("/active"), active ? localPath(active->document()) : QString());
+    s.setValue(key + QStringLiteral("/activeIndex"), activeIndex);
     s.setValue(key + QStringLiteral("/geometry"), saveGeometry());
     s.setValue(key + QStringLiteral("/sideVisible"), !m_side->isHidden());
     s.setValue(key + QStringLiteral("/sidePage"), m_side->currentIndex());
@@ -2087,8 +2153,11 @@ void MainWindow::restoreSession(bool applyGeometry)
 
     const QStringList files = s.value(key + QStringLiteral("/files")).toStringList();
     const QStringList cursors = s.value(key + QStringLiteral("/cursors")).toStringList();
+    const QStringList backups = s.value(key + QStringLiteral("/backups")).toStringList();
+    QList<KTextEditor::View *> views;
     for (qsizetype i = 0; i < files.size(); ++i) {
-        KTextEditor::View *view = openFile(files.at(i));
+        KTextEditor::View *view = restoreDocument(files.at(i), backups.value(i));
+        views << view;
         if (view && i < cursors.size()) {
             const QStringList lc = cursors.at(i).split(QLatin1Char(':'));
             if (lc.size() == 2) {
@@ -2096,8 +2165,17 @@ void MainWindow::restoreSession(bool applyGeometry)
             }
         }
     }
+    // Backups the session does not list (Lieve crashed before saving it) come back too.
+    const QStringList unlisted = Backups::names(m_root);
+    for (const QString &name : unlisted) {
+        if (!backups.contains(name)) {
+            restoreDocument(QString(), name);
+        }
+    }
     const QString active = s.value(key + QStringLiteral("/active")).toString();
-    if (!active.isEmpty()) {
+    if (KTextEditor::View *view = views.value(s.value(key + QStringLiteral("/activeIndex"), -1).toInt())) {
+        m_tabs->setCurrentWidget(view);
+    } else if (!active.isEmpty()) {
         openFile(active);
     }
 
@@ -2120,8 +2198,138 @@ void MainWindow::restoreSession(bool applyGeometry)
     });
 }
 
+// ---------------------------------------------------------------------------
+// Hot exit
+
+bool MainWindow::hotExit() const
+{
+    return !m_root.isEmpty() && Backups::hotExit();
+}
+
+// Writes the backup of a document with unsaved changes, if its text changed
+// since the last one. False only when it could not be written.
+bool MainWindow::backupDocument(KTextEditor::Document *doc)
+{
+    const QString name = doc->property("lieveBackup").toString();
+    if (m_root.isEmpty() || !doc->isModified() || !doc->isReadWrite() // read-only: diff tabs
+        || (!name.isEmpty() && doc->property("lieveBackupRevision").toLongLong() == doc->revision())) {
+        return true;
+    }
+    Backups::Backup backup;
+    backup.path = localPath(doc);
+    backup.text = doc->text();
+    if (backup.path.isEmpty() && backup.text.isEmpty()) {
+        dropBackup(doc); // a new document emptied again: nothing to keep
+        return true;
+    }
+    backup.name = name.isEmpty() ? Backups::newName(backup.path) : name;
+    backup.diskTime = doc->property("lieveDiskTime").toLongLong();
+    if (!Backups::write(m_root, backup)) {
+        qWarning().noquote() << "Lieve: cannot write the backup of" << documentTitle(doc);
+        return false;
+    }
+    doc->setProperty("lieveBackup", backup.name);
+    doc->setProperty("lieveBackupRevision", doc->revision());
+    return true;
+}
+
+// The document has no unsaved changes any more (saved, reverted, discarded).
+void MainWindow::dropBackup(KTextEditor::Document *doc)
+{
+    const QString name = doc->property("lieveBackup").toString();
+    if (name.isEmpty() || m_keepBackups) {
+        return;
+    }
+    Backups::remove(m_root, name);
+    doc->setProperty("lieveBackup", QVariant());
+    doc->setProperty("lieveBackupRevision", QVariant());
+}
+
+// Before closing the project's documents: backs up the unsaved ones (asking
+// only about those whose backup cannot be written), records them in the
+// session and marks them unmodified, so that closing them does not ask.
+// False if the user cancelled.
+bool MainWindow::keepUnsaved()
+{
+    m_backupTimer.stop();
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        KTextEditor::Document *doc = viewAt(i)->document();
+        if (!backupDocument(doc)) {
+            m_tabs->setCurrentIndex(i);
+            if (!doc->queryClose()) {
+                return false;
+            }
+            dropBackup(doc); // saved or discarded: an older backup must not come back
+        }
+    }
+    saveSession();
+    m_keepBackups = true;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        viewAt(i)->document()->setModified(false);
+    }
+    return true;
+}
+
+// Opens a document of the session. With a backup its unsaved text comes back,
+// in the file's tab, or in a new document when there is no file (any more).
+KTextEditor::View *MainWindow::restoreDocument(const QString &path, const QString &backupName)
+{
+    const std::optional<Backups::Backup> backup = backupName.isEmpty() ? std::nullopt : Backups::read(m_root, backupName);
+    const QString file = backup ? backup->path : path;
+    if (backup && !file.isEmpty() && !findView(QFileInfo(file).canonicalFilePath())) {
+        // After a crash KTextEditor offers to replay its swap file, which would
+        // apply the edits a second time on top of the backup: this replaces it.
+        QFile::remove(QFileInfo(file).absolutePath() + QStringLiteral("/.") + QFileInfo(file).fileName() + QStringLiteral(".kate-swp"));
+    }
+    KTextEditor::View *view = file.isEmpty() ? nullptr : openFile(file);
+    if (!backup) {
+        return view;
+    }
+    KTextEditor::Document *doc = view ? view->document() : nullptr;
+    if (doc && doc->text() == backup->text) {
+        Backups::remove(m_root, backup->name); // saved in the meantime
+        return view;
+    }
+    // Shown until the user has worked in the tab for a while.
+    const auto warn = [](KTextEditor::Document *d, const QString &text) {
+        auto *message = new KTextEditor::Message(QStringLiteral("<p>%1</p>").arg(text.toHtmlEscaped()), KTextEditor::Message::Warning);
+        message->setPosition(KTextEditor::Message::AboveView);
+        message->setAutoHide(10000);
+        message->setAutoHideMode(KTextEditor::Message::AfterUserInteraction);
+        d->postMessage(message);
+    };
+    if (doc && doc->isReadWrite()) {
+        doc->setText(backup->text);
+        if (backup->diskTime > 0 && QFileInfo(file).lastModified().toMSecsSinceEpoch() != backup->diskTime) {
+            doc->setProperty("lieveDiskTime", backup->diskTime);
+            warn(doc, tr("The file has changed on disk since these unsaved changes were made: saving them overwrites the new version."));
+        }
+    } else {
+        const bool gone = !doc && !file.isEmpty();
+        doc = KTextEditor::Editor::instance()->createDocument(this);
+        view = addView(doc);
+        m_tabs->setCurrentWidget(view);
+        doc->setText(backup->text);
+        if (gone) {
+            warn(doc, tr("%1 no longer exists: its unsaved changes are in this new document.").arg(QFileInfo(file).fileName()));
+        }
+    }
+    doc->setProperty("lieveBackup", backup->name);
+    doc->setProperty("lieveBackupRevision", doc->revision());
+    return view;
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    if (hotExit()) {
+        // Nothing to ask: the unsaved documents come back with the project.
+        if (keepUnsaved()) {
+            event->accept();
+        } else {
+            event->ignore();
+        }
+        return;
+    }
     saveSession();
     // Unsaved documents: Save / Discard / Cancel for each one.
     for (int i = 0; i < m_tabs->count(); ++i) {

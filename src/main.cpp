@@ -3,6 +3,7 @@
 #include "mainwindow.h"
 #include "quickopen.h"
 #include "settings.h"
+#include "tabview.h"
 #include "theme.h"
 #include "terminalpanel.h"
 #include "updater.h"
@@ -18,9 +19,12 @@
 #include <QAction>
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QIcon>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QLibraryInfo>
 #include <QLineEdit>
 #include <QMenu>
@@ -29,6 +33,7 @@
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QLocale>
+#include <QTextStream>
 #include <QTimer>
 #include <QTranslator>
 
@@ -36,6 +41,140 @@
 
 namespace
 {
+// LIEVE_TEST_HOTEXIT=step,step...: in every window "type" edits the current
+// document, "untitled" adds a new one with text, "prevtab" goes to the
+// previous tab, "save" saves the current one, "closetab" closes it; "cancel"
+// or "discard" answer the save questions. Then after LIEVE_TEST_HOTEXIT_DELAY
+// ms "close" (the windows), "closeproject", "quit" (Ctrl+Q) or "restart" (the
+// updater's). "report" writes each window's tabs to the screenshot's .txt.
+void hotExitTest(const QString &screenshot)
+{
+    const QStringList steps = qEnvironmentVariable("LIEVE_TEST_HOTEXIT").split(QLatin1Char(','), Qt::SkipEmptyParts);
+    const auto has = [steps](const char *step) {
+        return steps.contains(QLatin1String(step));
+    };
+    const auto trigger = [](MainWindow *window, const QKeySequence &key) {
+        const auto actions = window->actions();
+        for (QAction *action : actions) { // found by shortcut: the text depends on the interface language
+            if (action->shortcuts().contains(key)) {
+                action->trigger();
+                return;
+            }
+        }
+    };
+    const auto editorTabs = [](MainWindow *window) -> TabView * { // not the terminal's
+        const auto all = window->findChildren<TabView *>();
+        for (TabView *tabView : all) {
+            if (tabView->parentWidget() && tabView->parentWidget()->objectName() == QLatin1String("editorCard")) {
+                return tabView;
+            }
+        }
+        return nullptr;
+    };
+    const auto tabs = [editorTabs](MainWindow *window) {
+        QList<KTextEditor::View *> views;
+        if (TabView *tabView = editorTabs(window)) {
+            for (int i = 0; i < tabView->count(); ++i) {
+                if (auto *view = qobject_cast<KTextEditor::View *>(tabView->widget(i))) {
+                    views << view;
+                }
+            }
+        }
+        return views;
+    };
+    const auto current = [editorTabs](MainWindow *window) {
+        TabView *tabView = editorTabs(window);
+        return tabView ? qobject_cast<KTextEditor::View *>(tabView->currentWidget()) : nullptr;
+    };
+    const auto windows = WindowManager::instance().windows();
+    for (MainWindow *window : windows) {
+        if (KTextEditor::View *view = current(window); view && has("type")) {
+            view->document()->insertText(KTextEditor::Cursor(0, 0), QStringLiteral("// unsaved edit\n"));
+            view->setCursorPosition(KTextEditor::Cursor(1, 3));
+        }
+        if (has("untitled")) {
+            trigger(window, QKeySequence(Qt::CTRL | Qt::Key_N));
+            if (KTextEditor::View *view = current(window)) {
+                view->document()->setText(QStringLiteral("scratch notes\nsecond line"));
+            }
+        }
+        if (has("prevtab")) {
+            trigger(window, QKeySequence(Qt::CTRL | Qt::Key_PageUp));
+        }
+        if (KTextEditor::View *view = current(window); view && has("save")) {
+            view->document()->documentSave();
+        }
+    }
+    if (has("cancel") || has("discard")) { // answers the save questions: saves the first one as a PNG
+        auto *answer = new QTimer(qApp);
+        QObject::connect(answer, &QTimer::timeout, qApp, [discard = has("discard"), screenshot] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dialog) {
+                return;
+            }
+            const QString file = QString(screenshot).replace(QStringLiteral(".png"), QStringLiteral("-dialog.png"));
+            if (!QFile::exists(file)) {
+                dialog->grab().save(file);
+            }
+            qInfo().noquote() << "dialog" << dialog->windowTitle() << (discard ? "-> discard" : "-> cancel");
+            auto *box = dialog->findChild<QDialogButtonBox *>();
+            if (discard && box && box->button(QDialogButtonBox::No)) {
+                box->button(QDialogButtonBox::No)->click();
+            } else {
+                dialog->reject();
+            }
+        });
+        answer->start(400);
+    }
+    if (has("closetab")) {
+        for (MainWindow *window : windows) {
+            const qsizetype before = tabs(window).size();
+            trigger(window, QKeySequence(Qt::CTRL | Qt::Key_W));
+            qInfo().noquote() << "tabs" << before << "->" << tabs(window).size();
+        }
+    }
+    const int delay = qEnvironmentVariableIntValue("LIEVE_TEST_HOTEXIT_DELAY");
+    QTimer::singleShot(delay > 0 ? delay : 500, qApp, [has] {
+        qputenv("LIEVE_TEST_HOTEXIT", "report"); // what a restarted Lieve does
+        const auto windows = WindowManager::instance().windows();
+        if (has("close")) {
+            for (MainWindow *window : windows) {
+                qInfo().noquote() << "close" << window->close();
+            }
+        } else if (has("closeproject")) {
+            for (MainWindow *window : windows) {
+                qInfo().noquote() << "closeProject" << window->closeProject();
+            }
+        } else if (has("quit")) {
+            qInfo().noquote() << "closeAll" << WindowManager::instance().closeAll();
+        } else if (has("restart")) {
+            Updater::instance().restart();
+        }
+    });
+    const int shotDelay = qEnvironmentVariableIntValue("LIEVE_SCREENSHOT_DELAY");
+    QTimer::singleShot(std::max(0, (shotDelay > 0 ? shotDelay : 2500) - 1000), qApp, [has, tabs, current, screenshot] { // this runs 300+ ms in
+        if (!has("report")) {
+            return;
+        }
+        QFile out(QString(screenshot).replace(QStringLiteral(".png"), QStringLiteral(".txt")));
+        if (!out.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return;
+        }
+        QTextStream text(&out);
+        const auto windows = WindowManager::instance().windows();
+        for (MainWindow *window : windows) {
+            text << "window " << window->project() << "\n";
+            for (KTextEditor::View *view : tabs(window)) {
+                KTextEditor::Document *doc = view->document();
+                text << (view == current(window) ? "* " : "  ") << doc->documentName() << (doc->isModified() ? " [modified]" : "")
+                     << (doc->isReadWrite() ? "" : " [read-only]")
+                     << " cursor " << view->cursorPosition().line() << ":" << view->cursorPosition().column() << " path " << doc->url().toLocalFile()
+                     << " first-line " << doc->line(0) << "\n";
+            }
+        }
+    });
+}
+
 // Used by the automated checks (LIEVE_SCREENSHOT=file.png): render the first
 // window to a PNG and quit. Never set in normal use.
 void setupTestHooks(QApplication &app)
@@ -43,6 +182,11 @@ void setupTestHooks(QApplication &app)
     const QString screenshot = qEnvironmentVariable("LIEVE_SCREENSHOT");
     if (screenshot.isEmpty()) {
         return;
+    }
+    if (qEnvironmentVariableIsSet("LIEVE_TEST_HOTEXIT")) {
+        QTimer::singleShot(300, &app, [screenshot] {
+            hotExitTest(screenshot);
+        });
     }
     QTimer::singleShot(200, &app, [] {
         MainWindow *window = WindowManager::instance().windows().value(0);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QSet>
@@ -143,6 +144,13 @@ private:
     void saveSession();
     void restoreSession(bool applyGeometry);
 
+    // Hot exit: unsaved documents kept in backups (see backups.h)
+    bool hotExit() const;
+    bool backupDocument(KTextEditor::Document *doc);
+    void dropBackup(KTextEditor::Document *doc);
+    bool keepUnsaved();
+    KTextEditor::View *restoreDocument(const QString &path, const QString &backupName);
+
     QString m_root;
     QToolBar *m_activityBar = nullptr;
     QAction *m_actExplorer = nullptr;
@@ -186,6 +194,9 @@ private:
     QFileSystemWatcher m_gitWatcher;
     QTimer m_branchTimer;
     QTimer m_gitPoll;
+    QTimer m_backupTimer; // backs up unsaved documents shortly after typing stops
+    QElapsedTimer m_backupWait; // since the first edit the timer is waiting for
+    bool m_keepBackups = false; // closing with hot exit: the documents go, their backups stay
     // Coloured backgrounds of the lines in diff tabs
     QHash<KTextEditor::Document *, std::shared_ptr<std::vector<std::unique_ptr<KTextEditor::MovingRange>>>> m_diffRanges;
 };
