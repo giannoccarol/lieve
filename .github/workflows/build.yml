@@ -1,0 +1,17 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm --needed base-devel git pkgconf qt6-base qt6-svg ktexteditor kparts kdbusaddons kwindowsystem syntax-highlighting
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make -j"$(nproc)"

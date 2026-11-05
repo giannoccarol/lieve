@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Lieve</title>
+  <defs>
+    <!-- Tile: burgundy, a little lighter in the top-left corner -->
+    <linearGradient id="bg" x1="96" y1="96" x2="928" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8a2440"/>
+      <stop offset="0.55" stop-color="#5a1428"/>
+      <stop offset="1" stop-color="#330a16"/>
+    </linearGradient>
+    <radialGradient id="bgLight" cx="240" cy="180" r="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffc2c9" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffc2c9" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="512" y1="96" x2="512" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.03"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.12"/>
+    </linearGradient>
+    <radialGradient id="floor">
+      <stop offset="0" stop-color="#14030a" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#14030a" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Left stroke: warm ivory -->
+    <linearGradient id="left" x1="318" y1="566" x2="430" y2="631" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff6ee"/>
+      <stop offset="1" stop-color="#f0d5c6"/>
+    </linearGradient>
+    <linearGradient id="leftShade" x1="560" y1="320" x2="300" y2="704" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#d9a99a" stop-opacity="0.25"/>
+    </linearGradient>
+    <!-- Right stroke: old rose, darker where it tucks under the fold -->
+    <linearGradient id="right" x1="590" y1="330" x2="790" y2="660" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9c2f48"/>
+      <stop offset="0.45" stop-color="#cf6670"/>
+      <stop offset="1" stop-color="#f2b29c"/>
+    </linearGradient>
+    <linearGradient id="rightShade" x1="640" y1="560" x2="730" y2="508" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3a0815" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#3a0815" stop-opacity="0"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+
+    <path id="leftPath" d="M440 372 Q470 320 530 320 L588 320 Q600 320 594 330.4 L405.8 656.4 Q378.3 704 323.3 704 L262.3 704 Q248.3 704 255.3 691.9 Z"/>
+    <path id="rightPath" d="M596 324 L769 613 Q795 658 743 658 L689 658 Q675 658 668 645.9 L530 406.7 L575 330 Z"/>
+  </defs>
+
+  <!-- Tile -->
+  <rect x="96" y="96" width="832" height="832" rx="196" fill="url(#bg)"/>
+  <rect x="96" y="96" width="832" height="832" rx="196" fill="url(#bgLight)"/>
+  <rect x="97.5" y="97.5" width="829" height="829" rx="194.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
+
+  <!-- Soft shadow under the mark (a blurred, offset copy) -->
+  <g filter="url(#shadow)" opacity="0.55" transform="translate(0 22)">
+    <use xlink:href="#rightPath" fill="#1a0409"/>
+    <use xlink:href="#leftPath" fill="#1a0409"/>
+  </g>
+  <ellipse cx="672" cy="664" rx="110" ry="14" fill="url(#floor)"/>
+
+  <!-- Mark: a folded ribbon, the right half tucked under the left -->
+  <use xlink:href="#rightPath" fill="url(#right)"/>
+  <use xlink:href="#rightPath" fill="url(#rightShade)"/>
+  <use xlink:href="#leftPath" fill="url(#left)"/>
+  <use xlink:href="#leftPath" fill="url(#leftShade)"/>
+</svg>
