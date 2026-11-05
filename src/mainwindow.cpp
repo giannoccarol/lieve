@@ -509,6 +509,12 @@ void MainWindow::buildUi()
     connect(m_search, &SearchPanel::matchActivated, this, [this](const QString &path, int line, int column, int length) {
         openFile(path, line, column, length);
     });
+    // Replace in files: open files are changed in their document.
+    m_search->setDocumentProvider([this](const QString &path) -> KTextEditor::Document * {
+        KTextEditor::View *view = findView(path);
+        return view ? view->document() : nullptr;
+    });
+    connect(m_search, &SearchPanel::filesWritten, m_git, &Lieve::GitRepo::scheduleRefresh);
     connect(m_quickOpen, &QuickOpen::fileChosen, this, [this](const QString &path, int line) {
         openFile(path, line);
     });
@@ -754,6 +760,9 @@ void MainWindow::buildActions()
     addShortcut(tr("Find in Files"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F)}, true, [this] {
         showSearch(selectedText());
     });
+    addShortcut(tr("Replace in Files"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H)}, true, [this] {
+        showSearch(selectedText(), true);
+    });
     QAction *sourceControlAction = addShortcut(tr("Source Control"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G)}, true, [this] {
         showSidePage(GitPage, false);
         m_gitPanel->focusMessage();
@@ -977,10 +986,10 @@ void MainWindow::setSidebarVisible(bool visible)
     syncActivityBar();
 }
 
-void MainWindow::showSearch(const QString &text)
+void MainWindow::showSearch(const QString &text, bool replace)
 {
     showSidePage(SearchPage, false);
-    m_search->focusQuery(text);
+    m_search->focusQuery(text, replace);
 }
 
 void MainWindow::setTerminalVisible(bool visible)

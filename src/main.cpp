@@ -1,7 +1,9 @@
+#include "delegates.h"
 #include "gitpanel.h"
 #include "jumplist.h"
 #include "mainwindow.h"
 #include "quickopen.h"
+#include "searchpanel.h"
 #include "settings.h"
 #include "theme.h"
 #include "terminalpanel.h"
@@ -21,13 +23,18 @@
 #include <QDir>
 #include <QIcon>
 #include <QElapsedTimer>
+#include <QHoverEvent>
+#include <QLabel>
 #include <QLibraryInfo>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QToolButton>
 #include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
 #include <QLocale>
 #include <QTimer>
 #include <QTranslator>
@@ -36,6 +43,118 @@
 
 namespace
 {
+// Replace in files: LIEVE_TEST_SEARCH=<text> (or, if empty, Ctrl+Shift+H with
+// the first word of the editor selected); LIEVE_TEST_REPLACE=<text> fills
+// the Replace field; LIEVE_TEST_FLAGS=<c, w, r> turns on Match Case, Whole
+// Word, Regular Expression; LIEVE_TEST_HOVER_ROW=<n> hovers the n-th result
+// row; LIEVE_TEST_CLICK_ROW=<n>:<k> clicks its k-th hover button;
+// LIEVE_TEST_REPLACE_ALL runs Replace All. Dialogs are answered (and saved as
+// <screenshot>-dialogN.png), then the open documents are printed;
+// LIEVE_TEST_UNDO undoes once in each and prints them again.
+void testReplace(MainWindow *window, const QString &search)
+{
+    auto *panel = window->findChild<SearchPanel *>();
+    const QString flags = qEnvironmentVariable("LIEVE_TEST_FLAGS");
+    for (QToolButton *button : panel->findChildren<QToolButton *>()) {
+        const QString text = button->text();
+        if ((text == QLatin1String("Aa") && flags.contains(QLatin1Char('c'))) || (text == QLatin1String("ab") && flags.contains(QLatin1Char('w')))
+            || (text == QLatin1String(".*") && flags.contains(QLatin1Char('r')))) {
+            button->setChecked(true);
+        }
+    }
+    if (!search.isEmpty()) {
+        window->showSearch(search, true);
+    } else if (auto *view = window->findChild<KTextEditor::View *>()) {
+        view->setSelection(view->document()->wordRangeAt(KTextEditor::Cursor(0, 0)));
+        const auto actions = window->actions();
+        for (QAction *action : actions) { // found by shortcut: the text depends on the interface language
+            if (action->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H))) {
+                action->trigger();
+            }
+        }
+    }
+    if (auto *edit = window->findChild<QLineEdit *>(QStringLiteral("replaceInput")); edit && !qEnvironmentVariable("LIEVE_TEST_REPLACE").isEmpty()) {
+        edit->setText(qEnvironmentVariable("LIEVE_TEST_REPLACE"));
+    }
+    auto *answer = new QTimer(window);
+    answer->setInterval(250);
+    QObject::connect(answer, &QTimer::timeout, window, [n = 0]() mutable {
+        const auto widgets = QApplication::topLevelWidgets();
+        for (QWidget *widget : widgets) {
+            auto *box = qobject_cast<QMessageBox *>(widget);
+            if (!box || !box->isVisible()) {
+                continue;
+            }
+            qInfo().noquote() << "dialog" << box->text() << "|" << box->informativeText();
+            box->grab().save(qEnvironmentVariable("LIEVE_SCREENSHOT").replace(QStringLiteral(".png"), QStringLiteral("-dialog%1.png").arg(n++)));
+            QAbstractButton *accept = box->button(QMessageBox::Ok);
+            for (QAbstractButton *button : box->buttons()) {
+                if (box->buttonRole(button) == QMessageBox::AcceptRole) {
+                    accept = button;
+                }
+            }
+            if (accept) {
+                accept->click();
+            }
+        }
+    });
+    answer->start();
+    const auto dump = [window](const char *label) {
+        for (KTextEditor::View *view : window->findChildren<KTextEditor::View *>()) {
+            KTextEditor::Document *doc = view->document();
+            qInfo().noquote() << label << doc->url().toLocalFile() << "modified" << doc->isModified()
+                              << QString(doc->text()).replace(QLatin1Char('\n'), QStringLiteral("\\n"));
+        }
+    };
+    QTimer::singleShot(1500, window, [window, dump] {
+        auto *tree = window->findChild<SearchPanel *>()->findChild<QTreeWidget *>();
+        const int hover = qEnvironmentVariableIsSet("LIEVE_TEST_HOVER_ROW") ? qEnvironmentVariableIntValue("LIEVE_TEST_HOVER_ROW") : -1;
+        const QStringList click = qEnvironmentVariable("LIEVE_TEST_CLICK_ROW").split(QLatin1Char(':'));
+        const int clickRow = click.size() == 2 ? click.at(0).toInt() : -1;
+        QList<QPoint> clicks;
+        int row = 0;
+        for (QTreeWidgetItemIterator it(tree); *it; ++it, ++row) {
+            const QRect rect = tree->visualItemRect(*it);
+            if (row == hover) {
+                const QPointF pos = rect.center();
+                QHoverEvent event(QEvent::HoverMove, pos, tree->viewport()->mapToGlobal(pos), QPointF(-1, -1));
+                QApplication::sendEvent(tree->viewport(), &event);
+            }
+            if (row == clickRow) { // buttons: 22 px apart, from the right end (left of the count badge); k = 0 is the last
+                int right = rect.right() - 4;
+                if (const int count = (*it)->data(0, Lieve::CountRole).toInt(); count > 0) {
+                    right -= QFontMetrics(tree->font()).horizontalAdvance(QString::number(count)) + 12 + 6;
+                }
+                clicks << QPoint(right - click.at(1).toInt() * 22 - 12, rect.center().y());
+            }
+        }
+        for (const QPoint &pos : std::as_const(clicks)) {
+            for (const auto type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
+                QMouseEvent event(type, pos, tree->viewport()->mapToGlobal(pos), Qt::LeftButton, type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton, Qt::NoModifier);
+                QApplication::sendEvent(tree->viewport(), &event);
+            }
+        }
+        if (qEnvironmentVariableIsSet("LIEVE_TEST_REPLACE_ALL")) {
+            if (auto *button = window->findChild<QToolButton *>(QStringLiteral("replaceAllButton"))) {
+                QElapsedTimer timer;
+                timer.start();
+                button->click();
+                qInfo().noquote() << "replace-all-ms" << timer.elapsed() << "(dialogs included)";
+            }
+        }
+        QTimer::singleShot(300, window, [window, dump] { // after the clicked actions
+            qInfo().noquote() << "status" << window->findChild<QLabel *>(QStringLiteral("searchStatus"))->text();
+            dump("replaced");
+            if (qEnvironmentVariableIsSet("LIEVE_TEST_UNDO")) {
+                for (KTextEditor::View *view : window->findChildren<KTextEditor::View *>()) {
+                    view->actionCollection()->action(QStringLiteral("edit_undo"))->trigger();
+                }
+                dump("undone");
+            }
+        });
+    });
+}
+
 // Used by the automated checks (LIEVE_SCREENSHOT=file.png): render the first
 // window to a PNG and quit. Never set in normal use.
 void setupTestHooks(QApplication &app)
@@ -55,6 +174,9 @@ void setupTestHooks(QApplication &app)
         const QString search = qEnvironmentVariable("LIEVE_TEST_SEARCH");
         if (!search.isEmpty()) {
             window->showSearch(search);
+        }
+        if (qEnvironmentVariableIsSet("LIEVE_TEST_REPLACE")) {
+            testReplace(window, search);
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_SWITCHER")) {
             window->showProjectSwitcher();

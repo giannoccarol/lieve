@@ -66,7 +66,7 @@ public:
     void showProjectSwitcher();
 
     KTextEditor::View *openFile(const QString &path, int line = -1, int column = 0, int selectLength = 0);
-    void showSearch(const QString &text = QString());
+    void showSearch(const QString &text = QString(), bool replace = false);
     void setTerminalVisible(bool visible);
 
 Q_SIGNALS:
