@@ -335,12 +335,28 @@ void setupTestHooks(QApplication &app)
         const int saveAt = qEnvironmentVariableIntValue("LIEVE_TEST_SAVE");
         if (saveAt > 0) {
             if (auto *view = window->findChild<KTextEditor::View *>()) {
-                view->document()->insertText(KTextEditor::Cursor(0, 0), QStringLiteral(" "));
-                QTimer::singleShot(saveAt, window, [view] {
+                // LIEVE_TEST_SAVE_TEXT: inserted at the start of the cursor's line instead
+                const QString text = qEnvironmentVariable("LIEVE_TEST_SAVE_TEXT");
+                if (text.isEmpty()) {
+                    view->document()->insertText(KTextEditor::Cursor(0, 0), QStringLiteral(" "));
+                } else {
+                    view->document()->insertText(KTextEditor::Cursor(view->cursorPosition().line(), 0), text);
+                }
+                QTimer::singleShot(saveAt, window, [window, view] {
                     QElapsedTimer timer;
                     timer.start();
-                    view->document()->documentSave();
-                    qInfo().noquote() << "save-ms" << timer.elapsed() << "cursor" << view->cursorPosition().line() << view->cursorPosition().column();
+                    if (qEnvironmentVariableIsSet("LIEVE_TEST_FORMAT")) { // Format Document instead of saving
+                        for (QAction *action : window->actions()) { // found by shortcut: the text depends on the interface language
+                            if (action->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I))) {
+                                action->trigger();
+                            }
+                        }
+                    } else {
+                        view->document()->documentSave();
+                    }
+                    const KTextEditor::Cursor cursor = view->cursorPosition();
+                    qInfo().noquote() << "save-ms" << timer.elapsed() << "cursor" << cursor.line() << cursor.column()
+                                      << view->document()->line(cursor.line()).insert(cursor.column(), QLatin1Char('|')).trimmed();
                 });
             }
         }
