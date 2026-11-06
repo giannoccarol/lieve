@@ -51,6 +51,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QShortcut>
+#include <QScrollBar>
 #include <QSpinBox>
 #include <QTabBar>
 #include <QToolButton>
@@ -516,7 +517,15 @@ void markdownTest(MainWindow *window, const QStringList &steps)
             } else if (KTextEditor::View *view = source(); view && step == QLatin1String("type")) {
                 view->document()->insertText(KTextEditor::Cursor(0, 0), QStringLiteral("## Typed heading\n\nTyped *text* while the preview is open.\n\n"));
             } else if (view && step.startsWith(QLatin1String("line="))) {
-                view->setScrollPosition(KTextEditor::Cursor(step.mid(5).toInt(), 0));
+                // through the scroll bar, like the user: setScrollPosition() doesn't
+                // emit verticalScrollPositionChanged
+                const auto bars = view->findChildren<QScrollBar *>();
+                for (QScrollBar *bar : bars) {
+                    if (bar->orientation() == Qt::Vertical) {
+                        bar->setValue(step.mid(5).toInt());
+                        break;
+                    }
+                }
             } else if (step.startsWith(QLatin1String("middle="))) {
                 const auto click = [&groups](const QString &title) {
                     for (TabView *group : groups()) {
