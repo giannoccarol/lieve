@@ -249,6 +249,7 @@ QPushButton#secondaryButton:hover { background: @hoverStrong; }
 
 /* ---------- overlays, menus, tooltips ---------- */
 QFrame#overlay, QFrame#chooserFrame { background: @elevated; border: 1px solid @border; border-radius: 8px; }
+QTreeWidget#breadcrumbList { background: transparent; border: none; outline: 0; }
 QMenu { background: @elevated; color: @fg; border: 1px solid @border; padding: 4px; }
 QMenu::item { padding: 5px 24px 5px 10px; border-radius: 4px; }
 QMenu::item:selected { background: @selection; }

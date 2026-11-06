@@ -90,6 +90,7 @@ build/tests/settings_test: build/settings.o
 build/tests/conflicts_test: build/conflicts.o
 build/tests/git_test: build/git.o build/moc_git.o build/prettier.o build/settings.o
 build/tests/npmpackages_test: build/npmpackages.o
+build/tests/scopes_test: build/scopes.o
 
 build/tests:
 	mkdir -p build/tests

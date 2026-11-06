@@ -352,6 +352,16 @@ void SettingsDialog::build()
     }
     addCheck(QStringLiteral("editor/minimap"), false, Apply::Editors, tr("Minimap"), tr("Shows a miniature of the file in the scroll bar."));
     addCheck(QStringLiteral("editor/wordWrap"), false, Apply::Editors, tr("Word Wrap"), tr("Wraps long lines at the edge of the editor."));
+    addCheck(QStringLiteral("editor/breadcrumbs"),
+             true,
+             Apply::Editors,
+             tr("Breadcrumbs"),
+             tr("Shows the path of the file and the symbols around the cursor above the editor."));
+    addCheck(QStringLiteral("editor/stickyScroll"),
+             true,
+             Apply::Editors,
+             tr("Sticky Scroll"),
+             tr("Keeps the first lines of the blocks you are scrolled into at the top of the editor."));
     addCheck(QStringLiteral("editor/vscodeKeys"),
              true,
              Apply::Restart,

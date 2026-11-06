@@ -29,6 +29,7 @@ class GitRepo;
 struct GitEntry;
 class LspManager;
 }
+class EditorOutline;
 class Explorer;
 class GitGutter;
 class GitPanel;
@@ -215,6 +216,7 @@ private:
     ProblemsPanel *m_problems = nullptr; // a tab of the bottom panel, made when first shown
     QuickOpen *m_quickOpen = nullptr;
     Lieve::LspManager *m_lsp = nullptr; // language servers: definitions, problems, completion
+    EditorOutline *m_outline = nullptr; // breadcrumbs and sticky scroll
     QFrame *m_switcher = nullptr;
     ProjectList *m_switcherList = nullptr;
 

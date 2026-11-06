@@ -38,6 +38,8 @@ public:
     }
     // Shown at the right end of the strip (e.g. the terminal's + button).
     void setCornerWidget(QWidget *widget);
+    // Shown between the strip and the pages (the breadcrumbs).
+    void setBarBelowTabs(QWidget *bar);
 
 Q_SIGNALS:
     void currentChanged(int index);

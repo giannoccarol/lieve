@@ -197,6 +197,11 @@ void TabView::setCornerWidget(QWidget *widget)
     m_header->addWidget(widget, 0, Qt::AlignVCenter);
 }
 
+void TabView::setBarBelowTabs(QWidget *bar)
+{
+    static_cast<QVBoxLayout *>(layout())->insertWidget(1, bar);
+}
+
 void TabView::updateStrip()
 {
     m_bar->adjustSize();
