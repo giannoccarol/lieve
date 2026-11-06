@@ -87,6 +87,7 @@ build/tests/%: tests/%.cpp | build/tests
 
 build/tests/blame_test: build/blame.o build/moc_blame.o
 build/tests/settings_test: build/settings.o
+build/tests/scopes_test: build/scopes.o
 
 build/tests:
 	mkdir -p build/tests

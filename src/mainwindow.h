@@ -29,6 +29,7 @@ class GitRepo;
 struct GitEntry;
 class LspManager;
 }
+class EditorOutline;
 class Explorer;
 class GitGutter;
 class GitPanel;
@@ -204,6 +205,7 @@ private:
     TerminalPanel *m_terminal = nullptr;
     QuickOpen *m_quickOpen = nullptr;
     Lieve::LspManager *m_lsp = nullptr; // language servers: definitions, problems, completion
+    EditorOutline *m_outline = nullptr; // breadcrumbs and sticky scroll
     QFrame *m_switcher = nullptr;
     ProjectList *m_switcherList = nullptr;
 

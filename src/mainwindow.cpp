@@ -8,6 +8,7 @@
 #include "gitgutter.h"
 #include "gitpanel.h"
 #include "lsp.h"
+#include "outline.h"
 #include "prettier.h"
 #include "projectlist.h"
 #include "projects.h"
@@ -467,6 +468,10 @@ void MainWindow::buildUi()
 
     m_quickOpen = new QuickOpen(central);
     m_lsp = new LspManager(this, m_status, central);
+    m_outline = new EditorOutline(this, m_lsp);
+    for (TabView *group : std::as_const(m_groups)) {
+        m_outline->addGroup(group);
+    }
     buildSwitcher();
 
     connect(m_actExplorer, &QAction::triggered, this, [this] {
@@ -1220,6 +1225,9 @@ TabView *MainWindow::createGroup()
         setActiveGroup(group);
         showTabMenu(pos);
     });
+    if (m_outline) {
+        m_outline->addGroup(group);
+    }
     return group;
 }
 
@@ -1528,6 +1536,7 @@ void MainWindow::configureView(KTextEditor::View *view)
         set(QStringLiteral("font"), font);
     }
     applyKeymap(view);
+    m_outline->addView(view);
 }
 
 void MainWindow::applyKeymap(KTextEditor::View *view)
@@ -1675,6 +1684,7 @@ void MainWindow::applySettings()
         }
     }
     showBlame();
+    m_outline->applySettings(); // breadcrumbs, sticky scroll
 }
 
 void MainWindow::cycleTab(int step)

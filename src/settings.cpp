@@ -135,6 +135,10 @@ fontFamily=
 fontSize=0
 minimap=false
 wordWrap=false
+; Above the editor: the path of the file and the symbols around the cursor (like VS Code).
+breadcrumbs=true
+; While scrolling, the first lines of the blocks you are in stay at the top of the editor.
+stickyScroll=true
 ; VS Code-style shortcuts (Ctrl+D, Alt+Up/Down, Ctrl+Shift+K, Ctrl+H, ...).
 vscodeKeys=true
 

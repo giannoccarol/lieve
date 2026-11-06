@@ -4,6 +4,7 @@
 #include "jumplist.h"
 #include "lsp.h"
 #include "mainwindow.h"
+#include "outline.h"
 #include "quickopen.h"
 #include "searchpanel.h"
 #include "settings.h"
@@ -579,6 +580,16 @@ void setupTestHooks(QApplication &app)
             if (auto *lsp = window->findChild<Lieve::LspManager *>()) {
                 lsp->runTest(lspTest);
             }
+        }
+        // Breadcrumbs and sticky scroll: steps, see EditorOutline::runTest()
+        const QString outlineTest = qEnvironmentVariable("LIEVE_TEST_OUTLINE");
+        if (!outlineTest.isEmpty()) {
+            const int at = qEnvironmentVariableIntValue("LIEVE_TEST_OUTLINE_AT");
+            QTimer::singleShot(at > 0 ? at : 600, window, [window, outlineTest] {
+                if (auto *outline = window->findChild<EditorOutline *>()) {
+                    outline->runTest(outlineTest);
+                }
+            });
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_KEYS")) {
             if (auto *view = window->findChild<KTextEditor::View *>()) {
