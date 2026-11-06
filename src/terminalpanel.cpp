@@ -13,6 +13,7 @@
 
 #include <QAction>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QKeyEvent>
@@ -26,7 +27,9 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <fcntl.h>
 #include <pwd.h>
+#include <termios.h>
 #include <unistd.h>
 
 namespace
@@ -331,6 +334,69 @@ void TerminalPanel::newTerminal(const QString &dir, const QString &shellPath)
         }
     });
     widget->setFocus();
+}
+
+namespace
+{
+// True once the shell reads its command line: shells turn the terminal's own
+// echo off then. Typed before, a command would be shown twice.
+bool shellReady(int pid)
+{
+    if (pid <= 0) {
+        return false;
+    }
+    const int fd = ::open(QStringLiteral("/proc/%1/fd/0").arg(pid).toLocal8Bit().constData(), O_RDONLY | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+    termios mode{};
+    const bool ok = tcgetattr(fd, &mode) == 0;
+    ::close(fd);
+    return ok && !(mode.c_lflag & ECHO);
+}
+
+// Types `text` once the shell is ready (checked every 30 ms, for 5 s at most).
+void typeWhenReady(KParts::ReadOnlyPart *part, const QString &text)
+{
+    auto *terminal = qobject_cast<TerminalInterface *>(part);
+    if (shellReady(terminal->terminalProcessId())) {
+        terminal->sendInput(text);
+        return;
+    }
+    auto *timer = new QTimer(part);
+    QElapsedTimer waited;
+    waited.start();
+    QObject::connect(timer, &QTimer::timeout, part, [timer, terminal, text, waited] {
+        if (shellReady(terminal->terminalProcessId()) || waited.hasExpired(5000)) {
+            timer->deleteLater();
+            terminal->sendInput(text);
+        }
+    });
+    timer->start(30);
+}
+}
+
+QWidget *TerminalPanel::runCommand(const QString &dir, const QString &title, const QString &command, QWidget *reuse)
+{
+    KParts::ReadOnlyPart *part = reuse ? m_parts.value(reuse).data() : nullptr;
+    auto *terminal = qobject_cast<TerminalInterface *>(part);
+    if (!terminal || terminal->foregroundProcessId() != -1) { // closed, or still running something
+        newTerminal(dir);
+        part = m_parts.value(m_tabs->currentWidget()).data();
+        terminal = qobject_cast<TerminalInterface *>(part);
+        if (!terminal) {
+            return nullptr; // the error tab says why
+        }
+        // The tab keeps the command's name instead of the shell's title.
+        disconnect(part, &KParts::Part::setWindowCaption, this, nullptr);
+        const int index = m_tabs->indexOf(part->widget());
+        m_tabs->setTabText(index, title);
+        m_tabs->setTabToolTip(index, command);
+    }
+    m_tabs->setCurrentWidget(part->widget());
+    // As if typed: it stays in the shell's history.
+    typeWhenReady(part, command + QLatin1Char('\n'));
+    return part->widget();
 }
 
 void TerminalPanel::focusCurrent()

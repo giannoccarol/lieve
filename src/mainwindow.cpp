@@ -9,6 +9,7 @@
 #include "gitpanel.h"
 #include "lsp.h"
 #include "mergeconflicts.h"
+#include "npmscripts.h"
 #include "prettier.h"
 #include "problemspanel.h"
 #include "projectlist.h"
@@ -557,6 +558,15 @@ void MainWindow::buildUi()
     connect(m_explorer, &Explorer::pathRemoved, this, &MainWindow::onPathRemoved);
     connect(m_explorer, &Explorer::pathRenamed, m_git, &Lieve::GitRepo::scheduleRefresh);
     connect(m_explorer, &Explorer::pathRemoved, m_git, &Lieve::GitRepo::scheduleRefresh);
+    // NPM SCRIPTS: each script runs in a terminal of the panel.
+    m_explorer->npmScripts()->setRunner([this](const QString &dir, const QString &title, const QString &command, QWidget *reuse) {
+        QWidget *terminal = m_terminal->runCommand(dir, title, command, reuse);
+        setTerminalVisible(true);
+        return terminal;
+    });
+    connect(m_explorer->npmScripts(), &NpmScripts::openRequested, this, [this](const QString &path, int line, int column, int length) {
+        openFile(path, line, column, length);
+    });
     connect(m_search, &SearchPanel::matchActivated, this, [this](const QString &path, int line, int column, int length) {
         openFile(path, line, column, length);
     });
@@ -919,6 +929,18 @@ void MainWindow::buildActions()
     QAction *quitAction = addShortcut(tr("Exit"), {QKeySequence(Qt::CTRL | Qt::Key_Q)}, false, [] {
         WindowManager::instance().closeAll();
     });
+    // package.json scripts (the Explorer's NPM SCRIPTS), listed only for projects that have them
+    QAction *runScriptAction = addShortcut(tr("Run npm Script…"), {}, false, [this] {
+        m_quickOpen->popupChoices(m_explorer->npmScripts()->choices(), tr("Select the npm script to run"));
+    });
+    QAction *rerunScriptAction = addShortcut(tr("Rerun Last Script"), {}, false, [this] {
+        m_explorer->npmScripts()->rerunLast();
+    });
+    runScriptAction->setObjectName(QStringLiteral("actionRunNpmScript"));
+    rerunScriptAction->setObjectName(QStringLiteral("actionRerunNpmScript"));
+    setCommandCategory(runScriptAction, NpmScripts::Category);
+    setCommandCategory(rerunScriptAction, NpmScripts::Category);
+    m_explorer->npmScripts()->bindActions(runScriptAction, rerunScriptAction);
     // Go to Definition (F12), Back (Alt+Left), Go to Symbol (Ctrl+Shift+O), problems (F8)
     const QList<LspManager::Shortcut> lspShortcuts = m_lsp->shortcuts();
     for (const LspManager::Shortcut &shortcut : lspShortcuts) {

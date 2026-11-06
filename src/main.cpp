@@ -6,6 +6,7 @@
 #include "lsp.h"
 #include "mainwindow.h"
 #include "mergeconflicts.h"
+#include "npmscripts.h"
 #include "problemspanel.h"
 #include "quickopen.h"
 #include "searchpanel.h"
@@ -737,6 +738,12 @@ void setupTestHooks(QApplication &app)
                     MergeConflicts::runTest(focused, conflictSteps);
                 }
             });
+        }
+        const QString npmTest = qEnvironmentVariable("LIEVE_TEST_NPM"); // steps, see NpmScripts::runTest()
+        if (!npmTest.isEmpty()) {
+            if (auto *npm = window->findChild<NpmScripts *>()) {
+                npm->runTest(npmTest);
+            }
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_KEYS")) {
             if (auto *view = window->findChild<KTextEditor::View *>()) {

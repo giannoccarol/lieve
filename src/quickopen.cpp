@@ -146,6 +146,25 @@ void QuickOpen::popup(const QStringList &recentFiles, const QString &text)
     m_edit->setFocus();
 }
 
+void QuickOpen::popupChoices(const QList<CommandChoice> &choices, const QString &placeholder)
+{
+    QWidget *focus = QApplication::focusWidget();
+    if (!focus || !isAncestorOf(focus)) {
+        m_returnFocus = focus;
+    }
+    m_choices = choices;
+    m_choiceCommand = Command();
+    m_mode = Mode::Choices;
+    m_edit->setPlaceholderText(placeholder);
+    m_edit->blockSignals(true);
+    m_edit->clear();
+    m_edit->blockSignals(false);
+    refilter();
+    show();
+    raise();
+    m_edit->setFocus();
+}
+
 void QuickOpen::reloadFiles()
 {
     if (m_root.isEmpty() || m_proc) {
