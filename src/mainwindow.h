@@ -137,6 +137,7 @@ private:
 
     // Git
     void showDiff(const Lieve::GitEntry &entry, const QString &text);
+    void showDiffTab(const QString &key, const QString &title, const QString &iconName, const QString &text);
     void colorDiff(KTextEditor::Document *doc);
     void updateGitBadge();
     void updateGutter(KTextEditor::Document *doc);

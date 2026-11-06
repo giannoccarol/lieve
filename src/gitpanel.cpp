@@ -1,16 +1,24 @@
 #include "gitpanel.h"
 
+#include "commandpalette.h"
+#include "gitpicker.h"
 #include "settings.h"
 #include "theme.h"
 #include "vscodeicons.h"
 
+#include <KTextEditor/Document>
+#include <KTextEditor/View>
+
 #include <QApplication>
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDebug>
+#include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QMainWindow>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -22,6 +30,7 @@
 #include <QShortcut>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
+#include <QTimer>
 #include <QToolButton>
 #include <QToolTip>
 #include <QTreeWidget>
@@ -444,6 +453,7 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
     moreMenu->addAction(QIcon::fromTheme(QStringLiteral("download")), tr("Fetch"), this, [this] {
         m_repo->fetch(false);
     });
+    QAction *checkoutAction = moreMenu->addAction(QIcon::fromTheme(QStringLiteral("vcs-branch")), tr("Checkout to…"), this, &GitPanel::showCheckout);
     moreMenu->addSeparator();
     moreMenu->addAction(QIcon::fromTheme(QStringLiteral("list-add")), tr("Stage All Changes", "overflow menu"), this, [this] {
         QStringList paths;
@@ -457,7 +467,43 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
     moreMenu->addAction(QIcon::fromTheme(QStringLiteral("list-remove")), tr("Unstage All Changes"), this, [this] {
         m_repo->unstage(m_repo->entries());
     });
+    // Like VS Code's Stash submenu; in the command palette as "Git: Stash" and so on.
+    QMenu *stashMenu = moreMenu->addMenu(QIcon::fromTheme(QStringLiteral("vcs-stash")), tr("Stash", "submenu"));
+    const auto stashAction = [this, stashMenu](const QString &text, const char *name, const std::function<void(GitPicker *)> &run) {
+        QAction *action = stashMenu->addAction(text, this, [this, run] {
+            run(picker());
+        });
+        action->setObjectName(QLatin1String(name)); // the palette remembers it by this
+    };
+    stashAction(tr("Stash"), "gitStash", [](GitPicker *p) {
+        p->stash(false);
+    });
+    stashAction(tr("Stash (Include Untracked)"), "gitStashUntracked", [](GitPicker *p) {
+        p->stash(true);
+    });
+    stashMenu->addSeparator();
+    stashAction(tr("Pop Latest Stash"), "gitPopLatestStash", [this](GitPicker *) {
+        m_repo->popLatestStash();
+    });
+    stashAction(tr("Apply Stash…"), "gitApplyStash", [](GitPicker *p) {
+        p->pickStash(GitPicker::StashAction::Apply);
+    });
+    stashAction(tr("Pop Stash…"), "gitPopStash", [](GitPicker *p) {
+        p->pickStash(GitPicker::StashAction::Pop);
+    });
+    stashMenu->addSeparator();
+    stashAction(tr("Drop Stash…"), "gitDropStash", [](GitPicker *p) {
+        p->pickStash(GitPicker::StashAction::Drop);
+    });
     moreMenu->addSeparator();
+    QAction *historyAction = moreMenu->addAction(QIcon::fromTheme(QStringLiteral("view-history")), tr("View History"), this, [this] {
+        showHistory(QString());
+    });
+    QAction *fileHistoryAction = moreMenu->addAction(tr("View File History"), this, [this] {
+        if (m_repo->isRepository()) {
+            picker()->fileHistory(m_fileSource ? m_fileSource() : QString());
+        }
+    });
     moreMenu->addAction(QIcon::fromTheme(QStringLiteral("edit-undo")), tr("Undo Last Commit"), this, [this] {
         if (!m_repo->upstream().isEmpty() && m_repo->ahead() == 0) {
             const auto answer = QMessageBox::question(this,
@@ -471,6 +517,13 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
         m_repo->undoLastCommit();
     });
     more->setMenu(moreMenu);
+    checkoutAction->setObjectName(QStringLiteral("gitCheckout"));
+    historyAction->setObjectName(QStringLiteral("gitHistory"));
+    fileHistoryAction->setObjectName(QStringLiteral("gitFileHistory"));
+    m_windowActions = {checkoutAction, historyAction, fileHistoryAction};
+    for (QAction *action : std::as_const(m_windowActions)) {
+        setCommandCategory(action, CommandCategory::Git);
+    }
 
     // Wiring
     delegate->onAction = [this](const QModelIndex &index, Action action) {
@@ -527,6 +580,41 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
     rebuild();
 }
 
+GitPicker *GitPanel::picker()
+{
+    if (!m_picker) {
+        // Over the whole window, where Quick Open is.
+        auto *main = qobject_cast<QMainWindow *>(window());
+        m_picker = new GitPicker(m_repo, main && main->centralWidget() ? main->centralWidget() : window());
+        connect(m_picker, &GitPicker::diffReady, this, &GitPanel::commitDiffRequested);
+    }
+    return m_picker;
+}
+
+void GitPanel::showCheckout()
+{
+    if (m_repo->isRepository()) {
+        picker()->checkout();
+    }
+}
+
+void GitPanel::showHistory(const QString &file)
+{
+    if (!m_repo->isRepository()) {
+        return;
+    }
+    if (file.isEmpty()) {
+        picker()->history();
+    } else {
+        picker()->fileHistory(file);
+    }
+}
+
+void GitPanel::setFileSource(const std::function<QString()> &source)
+{
+    m_fileSource = source;
+}
+
 void GitPanel::focusMessage()
 {
     if (m_stack->currentIndex() == 0) {
@@ -562,6 +650,9 @@ void GitPanel::adjustMessageHeight()
 
 void GitPanel::rebuild()
 {
+    for (QAction *action : std::as_const(m_windowActions)) {
+        action->setEnabled(m_repo->isRepository());
+    }
     if (!GitRepo::gitInstalled()) {
         m_noRepo->setText(tr("git is not installed."));
         m_init->hide();
@@ -880,4 +971,91 @@ void GitPanel::showMenu(const QPoint &pos)
     }
     Q_UNUSED(group);
     menu.exec(m_tree->viewport()->mapToGlobal(pos));
+}
+
+// LIEVE_TEST_GITPICK, one step every 600 ms: a command ("checkout",
+// "history", "file-history", "stash", "stash-untracked", "pop-latest",
+// "apply", "pop", "drop"), "branch-click" (the branch in the status bar),
+// "type:<text>", a key ("down", "up", "enter",
+// "esc"), "rows" (prints the picker's rows), "docs" (prints whether each open
+// file matches the disk), "shot:<name>" (the window as <screenshot>-<name>.png)
+// or "wait". Message boxes are printed, saved as <screenshot>-dialogN.png
+// and answered with their accepting or destructive button.
+void GitPanel::runTest(const QString &steps)
+{
+    static const QHash<QString, QString> commands = {
+        {QStringLiteral("checkout"), QStringLiteral("gitCheckout")},
+        {QStringLiteral("history"), QStringLiteral("gitHistory")},
+        {QStringLiteral("file-history"), QStringLiteral("gitFileHistory")},
+        {QStringLiteral("stash"), QStringLiteral("gitStash")},
+        {QStringLiteral("stash-untracked"), QStringLiteral("gitStashUntracked")},
+        {QStringLiteral("pop-latest"), QStringLiteral("gitPopLatestStash")},
+        {QStringLiteral("apply"), QStringLiteral("gitApplyStash")},
+        {QStringLiteral("pop"), QStringLiteral("gitPopStash")},
+        {QStringLiteral("drop"), QStringLiteral("gitDropStash")},
+    };
+    const QString screenshot = qEnvironmentVariable("LIEVE_SCREENSHOT");
+    auto *answer = new QTimer(this);
+    answer->setInterval(200);
+    connect(answer, &QTimer::timeout, this, [screenshot, n = 0]() mutable {
+        const auto widgets = QApplication::topLevelWidgets();
+        for (QWidget *widget : widgets) {
+            auto *box = qobject_cast<QMessageBox *>(widget);
+            if (!box || !box->isVisible()) {
+                continue;
+            }
+            qInfo().noquote() << "dialog" << box->windowTitle() << "|" << box->text() << "|" << box->informativeText();
+            box->grab().save(QString(screenshot).replace(QStringLiteral(".png"), QStringLiteral("-dialog%1.png").arg(n++)));
+            QAbstractButton *accept = box->button(QMessageBox::Ok);
+            for (QAbstractButton *button : box->buttons()) {
+                const auto role = box->buttonRole(button);
+                if (role == QMessageBox::AcceptRole || role == QMessageBox::DestructiveRole) {
+                    accept = button;
+                }
+            }
+            if (accept) {
+                accept->click();
+            }
+        }
+    });
+    answer->start();
+
+    const QStringList list = steps.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+    for (qsizetype i = 0; i < list.size(); ++i) {
+        const QString step = list.at(i).trimmed();
+        QTimer::singleShot(600 * int(i + 1), this, [this, step, screenshot] {
+            qInfo().noquote() << "step" << step << "| branch" << m_repo->branch() << "| changes" << m_repo->entries().size();
+            if (commands.contains(step)) {
+                if (auto *action = findChild<QAction *>(commands.value(step))) {
+                    action->trigger();
+                }
+                return;
+            }
+            if (step == QLatin1String("branch-click")) { // the branch in the status bar
+                for (QToolButton *button : window()->findChildren<QToolButton *>(QStringLiteral("statusItem"))) {
+                    if (button->isVisible() && button->text() == m_repo->branch()) {
+                        button->click();
+                    }
+                }
+                return;
+            }
+            if (step.startsWith(QLatin1String("shot:"))) {
+                window()->grab().save(QString(screenshot).replace(QStringLiteral(".png"), QLatin1Char('-') + step.mid(5) + QStringLiteral(".png")));
+                return;
+            }
+            if (step == QLatin1String("docs")) {
+                for (auto *view : window()->findChildren<KTextEditor::View *>()) {
+                    KTextEditor::Document *doc = view->document();
+                    QFile file(doc->url().toLocalFile());
+                    const bool same = file.open(QIODevice::ReadOnly) && QString::fromUtf8(file.readAll()) == doc->text() + QLatin1Char('\n');
+                    qInfo().noquote() << "doc" << (doc->url().isEmpty() ? doc->documentName() : doc->url().toLocalFile()) << "matches disk" << same
+                                      << "modified" << doc->isModified() << "lines" << doc->lines();
+                }
+                return;
+            }
+            if (m_picker) {
+                m_picker->testStep(step);
+            }
+        });
+    }
 }

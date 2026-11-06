@@ -500,6 +500,11 @@ void MainWindow::buildUi()
             showDiff(entry, text);
         });
     });
+    connect(m_gitPanel, &GitPanel::commitDiffRequested, this, &MainWindow::showDiffTab);
+    m_gitPanel->setFileSource([this] {
+        KTextEditor::View *view = currentView();
+        return view ? localPath(view->document()) : QString();
+    });
     connect(m_git, &Lieve::GitRepo::changed, this, &MainWindow::updateGitBadge);
     connect(m_git, &Lieve::GitRepo::changed, this, &MainWindow::updateGitStatus);
     // A commit, checkout or pull (also from the terminal) moves HEAD: blame again.
@@ -964,6 +969,9 @@ void MainWindow::buildActions()
     connect(m_mainMenu, &QMenu::aboutToShow, this, [this, closeProjectAction] {
         closeProjectAction->setEnabled(!m_root.isEmpty());
     });
+
+    // "Git: Checkout to…" and the history run from the palette without showing the Git panel.
+    addActions(m_gitPanel->windowActions());
 
     // Command palette: everything above, the Git panel's menus and the
     // current editor's own actions, gathered each time it opens.
@@ -1805,6 +1813,11 @@ void MainWindow::showTabMenu(const QPoint &pos)
             showSidePage(ExplorerPage, false);
             m_explorer->reveal(path);
         });
+        if (m_git->isRepository() && path.startsWith(m_git->root() + QLatin1Char('/'))) {
+            menu.addAction(QIcon::fromTheme(QStringLiteral("view-history")), tr("View File History"), this, [this, path] {
+                m_gitPanel->showHistory(path);
+            });
+        }
     }
     menu.exec(m_tabs->tabBar()->mapToGlobal(pos));
 }
@@ -1857,7 +1870,7 @@ void MainWindow::updateGitStatus()
     if (branch == QLatin1String("(detached)")) {
         branch = tr("Detached HEAD");
     }
-    m_status->setItem(QStringLiteral("branch"), branch, m_gitIcon, tr("Branch %1 — click to open Source Control").arg(branch));
+    m_status->setItem(QStringLiteral("branch"), branch, m_gitIcon, tr("Branch %1 — click to check out another branch").arg(branch));
     if (!m_git->upstream().isEmpty()) {
         m_status->setItem(QStringLiteral("sync"),
                           QStringLiteral("↓%1 ↑%2").arg(m_git->behind()).arg(m_git->ahead()),
@@ -2082,8 +2095,7 @@ void MainWindow::onStatusClicked(const QString &name)
         return;
     }
     if (name == QLatin1String("branch")) {
-        showSidePage(GitPage, false);
-        m_gitPanel->focusMessage();
+        m_gitPanel->showCheckout();
         return;
     }
     if (name == QLatin1String("sync")) {
@@ -2226,6 +2238,12 @@ void MainWindow::showDiff(const Lieve::GitEntry &entry, const QString &text)
         title = tr("%1 (Untracked)").arg(name);
     }
     const QString key = QString::number(int(entry.group)) + QLatin1Char(':') + entry.path;
+    showDiffTab(key, title, name, text);
+}
+
+// The tab with this key is reused (refreshed); `iconName` picks its file icon.
+void MainWindow::showDiffTab(const QString &key, const QString &title, const QString &iconName, const QString &text)
+{
     const QString body = text.isEmpty() ? tr("No text differences (binary file, or only the permissions changed).\n") : text;
 
     KTextEditor::View *view = nullptr;
@@ -2245,7 +2263,7 @@ void MainWindow::showDiff(const Lieve::GitEntry &entry, const QString &text)
         doc = KTextEditor::Editor::instance()->createDocument(this);
         doc->setProperty("lieveDiffKey", key);
         doc->setProperty("lieveTitle", title);
-        doc->setProperty("lieveIconName", name);
+        doc->setProperty("lieveIconName", iconName);
         doc->setText(body);
         view = addView(doc);
     }

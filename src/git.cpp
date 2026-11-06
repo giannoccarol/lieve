@@ -64,6 +64,150 @@ QByteArray afterSpaces(const QByteArray &record, int spaces)
     }
     return record.mid(pos + 1);
 }
+
+// Separators of the formats below (never in names or subjects).
+constexpr char kField = '\x1f';
+constexpr char kRecord = '\x1e';
+}
+
+namespace GitParse
+{
+QStringList branchesArgs()
+{
+    return {QStringLiteral("for-each-ref"),
+            QStringLiteral("--sort=-committerdate"),
+            QStringLiteral("--format=%(refname)%1f%(objectname:short)%1f%(committerdate:unix)%1f"
+                           "%(upstream:short)%1f%(upstream:track,nobracket)%1f%(HEAD)%1f%(symref)"),
+            QStringLiteral("refs/heads"),
+            QStringLiteral("refs/remotes")};
+}
+
+QStringList stashesArgs()
+{
+    return {QStringLiteral("stash"), QStringLiteral("list"), QStringLiteral("--format=%gd%x1f%ct%x1f%gs")};
+}
+
+QStringList commitsArgs(const QString &path)
+{
+    QStringList args{QStringLiteral("log"), QStringLiteral("--max-count=200"), QStringLiteral("--format=%x1e%H%x1f%h%x1f%an%x1f%ct%x1f%s")};
+    if (!path.isEmpty()) {
+        // Through renames; --name-only gives the file's name in each commit.
+        args << QStringLiteral("--follow") << QStringLiteral("--name-only") << QStringLiteral("-z") << QStringLiteral("--") << path;
+    }
+    return args;
+}
+
+QList<GitBranch> branches(const QByteArray &out)
+{
+    QList<GitBranch> result;
+    const QList<QByteArray> lines = out.split('\n');
+    for (const QByteArray &line : lines) {
+        const QList<QByteArray> f = line.split(kField);
+        if (f.size() < 7 || !f.at(6).isEmpty()) { // symbolic refs: origin/HEAD
+            continue;
+        }
+        GitBranch b;
+        const QString ref = QString::fromUtf8(f.at(0));
+        if (ref.startsWith(QLatin1String("refs/heads/"))) {
+            b.name = ref.mid(11);
+        } else if (ref.startsWith(QLatin1String("refs/remotes/"))) {
+            b.name = ref.mid(13);
+            b.remote = true;
+        } else {
+            continue;
+        }
+        b.hash = QString::fromLatin1(f.at(1));
+        b.time = f.at(2).toLongLong();
+        b.upstream = QString::fromUtf8(f.at(3));
+        // "ahead 1, behind 2" (for-each-ref doesn't translate it)
+        const QList<QByteArray> track = f.at(4).split(',');
+        for (const QByteArray &part : track) {
+            const QByteArray t = part.trimmed();
+            if (t.startsWith("ahead ")) {
+                b.ahead = t.mid(6).toInt();
+            } else if (t.startsWith("behind ")) {
+                b.behind = t.mid(7).toInt();
+            }
+        }
+        b.current = f.at(5) == "*";
+        result << b;
+    }
+    return result;
+}
+
+QList<GitStash> stashes(const QByteArray &out)
+{
+    QList<GitStash> result;
+    const QList<QByteArray> lines = out.split('\n');
+    for (const QByteArray &line : lines) {
+        const QList<QByteArray> f = line.split(kField);
+        if (f.size() < 3 || !f.at(0).startsWith("stash@{")) {
+            continue;
+        }
+        GitStash s;
+        s.index = f.at(0).mid(7, f.at(0).size() - 8).toInt();
+        s.time = f.at(1).toLongLong();
+        // "On main: message" or "WIP on main: 1234abc subject" (git writes them in English)
+        const QString subject = QString::fromUtf8(f.mid(2).join(kField));
+        const qsizetype colon = subject.indexOf(QLatin1String(": "));
+        s.message = subject;
+        if (subject.startsWith(QLatin1String("On ")) && colon > 3) {
+            s.branch = subject.mid(3, colon - 3);
+            s.message = subject.mid(colon + 2);
+        } else if (subject.startsWith(QLatin1String("WIP on ")) && colon > 7) {
+            s.branch = subject.mid(7, colon - 7);
+        }
+        result << s;
+    }
+    return result;
+}
+
+QList<GitCommit> commits(const QByteArray &out)
+{
+    QList<GitCommit> result;
+    const QList<QByteArray> records = out.split(kRecord);
+    for (const QByteArray &record : records) {
+        // "<fields>" or, with -z --name-only, "<fields>\0\n<path>\0"
+        const qsizetype nul = record.indexOf('\0');
+        const QList<QByteArray> f = (nul < 0 ? record : record.left(nul)).trimmed().split(kField);
+        if (f.size() < 5) {
+            continue;
+        }
+        GitCommit c;
+        c.hash = QString::fromLatin1(f.at(0));
+        c.shortHash = QString::fromLatin1(f.at(1));
+        c.author = QString::fromUtf8(f.at(2));
+        c.time = f.at(3).toLongLong();
+        c.subject = QString::fromUtf8(f.mid(4).join(kField));
+        if (nul >= 0) {
+            QByteArray path = record.mid(nul + 1);
+            while (path.startsWith('\n')) {
+                path.remove(0, 1);
+            }
+            c.path = QString::fromUtf8(path.left(path.indexOf('\0')));
+        }
+        result << c;
+    }
+    return result;
+}
+
+bool validBranchName(const QString &name)
+{
+    if (name.isEmpty() || name == QLatin1String("@") || name == QLatin1String("HEAD") || name.startsWith(QLatin1Char('-'))
+        || name.endsWith(QLatin1Char('/')) || name.endsWith(QLatin1Char('.')) || name.contains(QLatin1String(".."))
+        || name.contains(QLatin1String("//")) || name.contains(QLatin1String("@{"))) {
+        return false;
+    }
+    for (const QChar c : name) {
+        if (c.unicode() < 0x20 || c.unicode() == 0x7f || QStringView(u" ~^:?*[\\").contains(c)) {
+            return false;
+        }
+    }
+    const QStringList parts = name.split(QLatin1Char('/'));
+    return std::none_of(parts.cbegin(), parts.cend(), [](const QString &part) {
+        return part.startsWith(QLatin1Char('.')) || part.endsWith(QLatin1String(".lock"));
+    });
+}
 }
 
 GitRepo::GitRepo(QObject *parent)
@@ -597,5 +741,162 @@ void GitRepo::diff(const GitEntry &entry, const std::function<void(const QString
         done(QString::fromUtf8(out));
     };
     enqueue(std::move(job));
+}
+
+void GitRepo::query(const QStringList &args, const std::function<void(int, const QByteArray &)> &done)
+{
+    if (m_root.isEmpty()) {
+        done(-1, {});
+        return;
+    }
+    auto *proc = new QProcess(this);
+    proc->setWorkingDirectory(m_root);
+    QProcessEnvironment env = gitEnvironment();
+    env.insert(QStringLiteral("SSH_ASKPASS_REQUIRE"), QStringLiteral("never"));
+    env.insert(QStringLiteral("GCM_INTERACTIVE"), QStringLiteral("never"));
+    proc->setProcessEnvironment(env);
+    proc->setStandardInputFile(QProcess::nullDevice());
+    const quint64 generation = m_generation;
+    const auto finish = [this, proc, done, generation](int exitCode) {
+        const QByteArray out = proc->readAllStandardOutput();
+        proc->deleteLater();
+        if (generation == m_generation) {
+            done(exitCode, out);
+        }
+    };
+    connect(proc, &QProcess::finished, this, [finish](int code, QProcess::ExitStatus status) {
+        finish(status == QProcess::NormalExit ? code : -1);
+    });
+    connect(proc, &QProcess::errorOccurred, this, [finish, proc](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            proc->disconnect();
+            finish(-1);
+        }
+    });
+    proc->start(QStringLiteral("git"),
+                QStringList{QStringLiteral("-c"), QStringLiteral("core.quotepath=false"), QStringLiteral("-c"), QStringLiteral("color.ui=never"),
+                            QStringLiteral("--no-optional-locks")}
+                    + args);
+}
+
+void GitRepo::branches(const std::function<void(const QList<GitBranch> &)> &done)
+{
+    query(GitParse::branchesArgs(), [done](int code, const QByteArray &out) {
+        done(code == 0 ? GitParse::branches(out) : QList<GitBranch>());
+    });
+}
+
+void GitRepo::checkout(const QString &branch)
+{
+    Job job;
+    job.args = {QStringLiteral("switch"), branch};
+    job.title = tr("Couldn't check out “%1”").arg(branch);
+    enqueue(std::move(job));
+}
+
+void GitRepo::checkoutTracking(const QString &remoteBranch)
+{
+    Job job;
+    job.args = {QStringLiteral("switch"), QStringLiteral("--track"), remoteBranch};
+    job.title = tr("Couldn't check out “%1”").arg(remoteBranch);
+    enqueue(std::move(job));
+}
+
+void GitRepo::createBranch(const QString &name, const QString &from)
+{
+    Job job;
+    // Not tracking the branch it starts from: Sync would push to that one.
+    job.args = {QStringLiteral("switch"), QStringLiteral("--no-track"), QStringLiteral("-c"), name};
+    if (!from.isEmpty()) {
+        job.args << from;
+    }
+    job.title = tr("Couldn't create the branch “%1”").arg(name);
+    enqueue(std::move(job));
+}
+
+bool GitRepo::canStash(bool includeUntracked) const
+{
+    return std::any_of(m_entries.cbegin(), m_entries.cend(), [includeUntracked](const GitEntry &e) {
+        return includeUntracked || e.status != QLatin1Char('U');
+    });
+}
+
+void GitRepo::stash(const QString &message, bool includeUntracked)
+{
+    if (!canStash(includeUntracked)) {
+        Q_EMIT failed(tr("Stash"), tr("There are no changes to stash."));
+        return;
+    }
+    Job job;
+    job.args = {QStringLiteral("stash"), QStringLiteral("push")};
+    if (includeUntracked) {
+        job.args << QStringLiteral("--include-untracked");
+    }
+    if (!message.isEmpty()) {
+        job.args << QStringLiteral("--message") << message;
+    }
+    job.title = tr("Couldn't stash the changes");
+    enqueue(std::move(job));
+}
+
+void GitRepo::stashes(const std::function<void(const QList<GitStash> &)> &done)
+{
+    query(GitParse::stashesArgs(), [done](int code, const QByteArray &out) {
+        done(code == 0 ? GitParse::stashes(out) : QList<GitStash>());
+    });
+}
+
+void GitRepo::popLatestStash()
+{
+    // In the queue: a stash being made just before counts.
+    Job list;
+    list.args = {QStringLiteral("stash"), QStringLiteral("list"), QStringLiteral("--format=%gd")};
+    list.busy = false;
+    list.done = [this](int code, const QByteArray &out, const QByteArray &) {
+        if (code != 0 || out.trimmed().isEmpty()) {
+            Q_EMIT failed(tr("Pop Latest Stash"), tr("There are no stashes in the repository."));
+            return;
+        }
+        applyStash(0, true);
+    };
+    enqueue(std::move(list));
+}
+
+void GitRepo::applyStash(int index, bool pop)
+{
+    Job job;
+    job.args = {QStringLiteral("stash"), pop ? QStringLiteral("pop") : QStringLiteral("apply"), QStringLiteral("stash@{%1}").arg(index)};
+    job.title = pop ? tr("Couldn't pop the stash") : tr("Couldn't apply the stash");
+    enqueue(std::move(job));
+}
+
+void GitRepo::dropStash(int index)
+{
+    Job job;
+    job.args = {QStringLiteral("stash"), QStringLiteral("drop"), QStringLiteral("stash@{%1}").arg(index)};
+    job.title = tr("Couldn't drop the stash");
+    enqueue(std::move(job));
+}
+
+void GitRepo::log(const QString &path, const std::function<void(const QList<GitCommit> &)> &done)
+{
+    query(GitParse::commitsArgs(path), [done](int code, const QByteArray &out) {
+        done(code == 0 ? GitParse::commits(out) : QList<GitCommit>());
+    });
+}
+
+void GitRepo::show(const QString &hash, const QString &path, const std::function<void(const QString &)> &done)
+{
+    QStringList args{QStringLiteral("show"), QStringLiteral("--no-ext-diff"), QStringLiteral("--diff-merges=first-parent"), QStringLiteral("--format=medium")};
+    if (path.isEmpty()) {
+        args << QStringLiteral("--stat") << QStringLiteral("--patch");
+    }
+    args << hash;
+    if (!path.isEmpty()) {
+        args << QStringLiteral("--") << path;
+    }
+    query(args, [done](int, const QByteArray &out) {
+        done(QString::fromUtf8(out));
+    });
 }
 }

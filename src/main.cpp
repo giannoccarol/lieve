@@ -454,6 +454,9 @@ void setupTestHooks(QApplication &app)
                 }
             });
         }
+        if (qEnvironmentVariableIsSet("LIEVE_TEST_GITPICK")) { // branches, stashes, history: steps, see GitPanel::runTest()
+            window->findChild<GitPanel *>()->runTest(qEnvironmentVariable("LIEVE_TEST_GITPICK"));
+        }
         const QString newShell = qEnvironmentVariable("LIEVE_TEST_NEW_SHELL"); // a second terminal with this shell
         if (!newShell.isEmpty()) {
             QTimer::singleShot(600, window, [window, newShell] {
