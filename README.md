@@ -6,7 +6,8 @@ A lightweight, native code editor for KDE Plasma (Qt 6 + KDE Frameworks, no Elec
 It does a few things and does them well: **Explorer**, **Search and replace in files**, **Quick Open**
 (`Ctrl+P`) and the **Command Palette** (`Ctrl+Shift+P`), **editor** (also side by side) and **terminal**,
 with several projects open at once (one window per project), **Prettier and ESLint on save**, a **Git panel**
-with change marks next to the line numbers and inline blame, and unsaved files kept across restarts, as in
+with change marks next to the line numbers, inline blame, branches, stashes, history and merge conflicts,
+a **Problems** panel, **npm scripts**, a **Markdown preview**, and unsaved files kept across restarts, as in
 VS Code. File icons and the main keyboard shortcuts are the ones from VS Code.
 
 *Lieve* is Italian for "light". The interface is in English and Italian and follows the system language.
@@ -137,6 +138,14 @@ lieve --open-folder        # asks which folder to open
 groups is one document, so edits show in both, and closing one of its tabs keeps the other. An emptied group
 goes away. (The session reopens the files in a single group.)
 
+### Markdown preview
+
+`Ctrl+K V` opens the preview of a Markdown file in the group beside it, `Ctrl+Shift+V` in the same group (press
+it again to go back to the source); the button at the right of the tab bar does the same. It follows GitHub's
+Markdown (tables, task lists, code blocks in the editor's font, images next to the file), updates as you type
+and scrolls with the editor. It is drawn by Qt itself, without a web engine, so it costs next to nothing.
+Preview tabs are not reopened at the next start.
+
 ### Language intelligence (language servers)
 
 When a language server is installed, Lieve uses it, like VS Code does through its extensions:
@@ -144,6 +153,8 @@ When a language server is installed, Lieve uses it, like VS Code does through it
 - **Go to Definition**: `F12` or `Ctrl+click` (`Alt+←` / `Alt+→` to go back and forward).
 - **Problems** underlined as you type, the message on hover, a count (⊗ errors ⚠ warnings) in the status bar;
   `F8` / `Shift+F8` go to the next / previous one.
+- **Problems panel** (`Ctrl+Shift+M`, or click the count in the status bar): a tab next to the terminals that
+  lists the problems of the open files, grouped by file, errors first; click one (or `Enter`) to jump to it.
 - **Hover** information, **completion** with auto-imports, **Go to Symbol in File** (`Ctrl+Shift+O`).
 
 TypeScript and JavaScript use `typescript-language-server` with the project's own TypeScript:
@@ -181,6 +192,15 @@ exclude). `Ctrl+Shift+H` (or the chevron next to the search box) shows a **Repla
   open a terminal with it, or set it as the default under **Default Shell**.
   The choice is saved in `lieve.conf` (`[terminal] shell=`) and applies to every window.
 - `[terminal] shell=` takes `auto` (the login shell), a name such as `fish`, `zsh`, `bash`, or a full path.
+
+### npm scripts
+
+When the project has a `package.json` (at the top or one folder down), the Explorer shows an **NPM SCRIPTS**
+section under the files, like VS Code: click ▶ (or double-click the script) to run it in a new terminal tab
+named after it, in the package's folder. It uses `npm run`, or `pnpm`, `yarn` or `bun` when the project has
+their lock file. The command is typed into your shell, so the terminal stays open afterwards and `↑ Enter`
+runs it again. **Tasks: Run npm Script…** and **Tasks: Rerun Last Script** are in the Command Palette;
+right-click a script to open `package.json` at its line. Click the section title to fold it.
 
 ### Prettier and ESLint on save
 
@@ -225,6 +245,16 @@ plus `.prettierrc` (with its plugins), `.prettierignore` and `.editorconfig`.
   come back to the window and every 10 seconds. With `git.autofetch` on it fetches every 3 minutes, never
   asking for a password in the background.
 - Git hooks (husky, lint-staged…) find `node` even when Lieve is started from the menu.
+- **Branches**: click the branch name in the status bar (or **Git: Checkout to…** in the Command Palette) to
+  switch branch, with the most recent first, ahead/behind counts and the remote branches; or create a new one
+  (also from another branch). Files open in the editor reload with the new branch's content.
+- **Stash** (in the ⋮ menu and the Command Palette): stash, also with untracked files, with an optional
+  message; apply, pop or drop one from the list (dropping asks first).
+- **History**: **View History** and **View File History** (⋮ menu, Command Palette, tab menu) list the
+  commits, searchable by message, author or hash; pick one to see its changes in a read-only tab.
+- **Merge conflicts**: in a file with conflict markers the current and incoming changes are tinted green and
+  blue, and the `<<<<<<<` line offers **Accept Current Change | Accept Incoming Change | Accept Both Changes**
+  (one undo step each). The Command Palette has the next/previous conflict and accept-all commands.
 - **Change marks next to the line numbers** (VS Code's quick diff): a thin bar on lines added (green) or
   modified (blue) and a red wedge where lines were deleted, comparing the editor's text (unsaved edits
   included) with the staged version. Staging a change makes its marks go away; click a mark to open the diff
@@ -300,6 +330,8 @@ carries the line `X-Lieve-JumpList=true`).
 | Go to definition / back | `F12` or `Ctrl+click` / `Alt+←` |
 | Go to symbol in file | `Ctrl+Shift+O` |
 | Next / previous problem | `F8` / `Shift+F8` |
+| Problems panel | `Ctrl+Shift+M` |
+| Markdown preview to the side / in place | `Ctrl+K` then `V` / `Ctrl+Shift+V` |
 | Trigger completion | `Ctrl+Space` |
 | Find / replace in file | `Ctrl+F` / `Ctrl+H` |
 | Go to line (Quick Open with `:`) | `Ctrl+G` |
@@ -380,7 +412,8 @@ Lieve puts together components written by others; the credit for the heavy lifti
   including the "VSCodium Dark" theme), [Konsole](https://invent.kde.org/utilities/konsole) (terminal),
   [KParts](https://invent.kde.org/frameworks/kparts), KXmlGui, KCoreAddons, KDBusAddons (single instance),
   KWindowSystem (window activation on Wayland). LGPL/GPL licences.
-- **The Qt Company and contributors**: [Qt 6](https://www.qt.io/).
+- **The Qt Company and contributors**: [Qt 6](https://www.qt.io/). The Markdown preview uses Qt's Markdown
+  support, built on [MD4C](https://github.com/mity/md4c) by Martin Mitáš (MIT).
 - **Andrew Gallant (BurntSushi)**: [ripgrep](https://github.com/BurntSushi/ripgrep), used for search and `Ctrl+P`.
 - **vscode-icons team**: [vscode-icons](https://github.com/vscode-icons/vscode-icons) (MIT code, CC BY-SA icons).
   The icons are not included in Lieve: they are read from the extension installed in VS Code.
@@ -395,5 +428,6 @@ Lieve puts together components written by others; the credit for the heavy lifti
   installed. The [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) is Microsoft's.
 - **Microsoft**: language definitions (file extensions) are read from the built-in extensions of the
   installed [Visual Studio Code](https://github.com/microsoft/vscode).
-- Layout, shortcuts, the command palette, quick diff, hot exit and the settings window are modelled on
-  Visual Studio Code's.
+- Layout, shortcuts, the command palette, quick diff, hot exit, the settings window, the Problems panel, the
+  NPM SCRIPTS view, the merge conflict actions and colours, the branch/stash/history pickers and the Markdown
+  preview are modelled on Visual Studio Code's.
