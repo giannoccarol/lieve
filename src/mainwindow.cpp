@@ -8,6 +8,7 @@
 #include "gitgutter.h"
 #include "gitpanel.h"
 #include "lsp.h"
+#include "mergeconflicts.h"
 #include "prettier.h"
 #include "projectlist.h"
 #include "projects.h"
@@ -199,7 +200,7 @@ public:
     }
     QList<int> inlineNotes(int line) const override
     {
-        if (line != m_line || !m_doc) {
+        if (line != m_line || !m_doc || MergeConflicts::hasNote(m_doc, line)) { // a conflict marker line has its own note
             return {};
         }
         return {m_doc->lineLength(line)};
@@ -1439,6 +1440,8 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc, TabView *grou
         gutter->addView(view);
         updateGutter(doc);
     }
+    // Merge conflict markers: tinted, with Accept Current/Incoming/Both
+    MergeConflicts::watch(doc);
     // Hot exit: unsaved text is backed up shortly after typing stops; the
     // backup goes when the document is saved, reverted or discarded.
     connect(doc, &KTextEditor::Document::textChanged, this, [this](KTextEditor::Document *d) {

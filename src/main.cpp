@@ -4,6 +4,7 @@
 #include "jumplist.h"
 #include "lsp.h"
 #include "mainwindow.h"
+#include "mergeconflicts.h"
 #include "quickopen.h"
 #include "searchpanel.h"
 #include "settings.h"
@@ -579,6 +580,22 @@ void setupTestHooks(QApplication &app)
             if (auto *lsp = window->findChild<Lieve::LspManager *>()) {
                 lsp->runTest(lspTest);
             }
+        }
+        // LIEVE_TEST_CONFLICTS: steps on the focused editor, see MergeConflicts::runTest()
+        const QString conflictSteps = qEnvironmentVariable("LIEVE_TEST_CONFLICTS");
+        if (!conflictSteps.isEmpty()) {
+            QTimer::singleShot(800, window, [window, conflictSteps] {
+                const auto views = window->findChildren<KTextEditor::View *>();
+                KTextEditor::View *focused = views.value(0);
+                for (KTextEditor::View *view : views) {
+                    if (view->isAncestorOf(QApplication::focusWidget())) {
+                        focused = view;
+                    }
+                }
+                if (focused) {
+                    MergeConflicts::runTest(focused, conflictSteps);
+                }
+            });
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_KEYS")) {
             if (auto *view = window->findChild<KTextEditor::View *>()) {

@@ -191,7 +191,8 @@ void addEditorCommands(QList<Command> &commands, KTextEditor::View *view)
         if (title.isEmpty()) {
             continue;
         }
-        Command command = makeCommand(action, title, translatedCategory(editorCategory(name)), focusView);
+        const QByteArray own = action->property(kCategoryProperty).toString().toUtf8(); // Lieve's own editor commands (merge conflicts)
+        Command command = makeCommand(action, title, translatedCategory(own.isEmpty() ? editorCategory(name) : own.constData()), focusView);
         command.id = QStringLiteral("editor/") + name;
         command.choices = choices;
         // KTextEditor has some twice (Join Lines, Remove Trailing Spaces): keep one.
