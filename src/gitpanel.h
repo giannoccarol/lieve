@@ -2,9 +2,14 @@
 
 #include "git.h"
 
+#include <QPointer>
 #include <QSet>
 #include <QWidget>
 
+#include <functional>
+
+class GitPicker;
+class QAction;
 class QLabel;
 class QPlainTextEdit;
 class QProgressBar;
@@ -29,10 +34,25 @@ public:
 
     explicit GitPanel(Lieve::GitRepo *repo, QWidget *parent = nullptr);
     void focusMessage();
+    // "Checkout to…" and the history, in a picker over the window.
+    void showCheckout();
+    void showHistory(const QString &file); // absolute path, "" = the whole project
+    // The file of "View File History" (the current editor's).
+    void setFileSource(const std::function<QString()> &source);
+    // Commands that work without the panel: the window lists them in the
+    // command palette as they are (the panel's menus show the panel first).
+    QList<QAction *> windowActions() const
+    {
+        return m_windowActions;
+    }
+    // Test hook: steps separated by ';', see the definition.
+    void runTest(const QString &steps);
 
 Q_SIGNALS:
     void diffRequested(const Lieve::GitEntry &entry);
     void openFileRequested(const QString &path);
+    // A commit from the history, for a read-only diff tab.
+    void commitDiffRequested(const QString &key, const QString &title, const QString &iconName, const QString &text);
 
 protected:
     void showEvent(QShowEvent *event) override;
@@ -49,6 +69,7 @@ private:
     void showMenu(const QPoint &pos);
     QList<Lieve::GitEntry> entriesOf(QTreeWidgetItem *item) const;
     bool confirmDiscard(const QList<Lieve::GitEntry> &entries);
+    GitPicker *picker(); // created on first use
 
     Lieve::GitRepo *m_repo;
     QStackedWidget *m_stack = nullptr;
@@ -61,4 +82,7 @@ private:
     QToolButton *m_commitMenu = nullptr;
     QTreeWidget *m_tree = nullptr;
     QSet<int> m_collapsed; // collapsed sections, by group
+    QPointer<GitPicker> m_picker;
+    QList<QAction *> m_windowActions;
+    std::function<QString()> m_fileSource;
 };

@@ -26,6 +26,48 @@ struct GitEntry {
     QString origPath; // renamed from (staged renames)
 };
 
+// A branch, for the checkout picker.
+struct GitBranch {
+    QString name; // "main", or "origin/main" for remote ones
+    bool remote = false;
+    bool current = false; // checked out
+    QString hash; // short
+    qint64 time = 0; // of its last commit, seconds since the epoch
+    QString upstream; // local branches: "origin/main" ("" = none)
+    int ahead = 0;
+    int behind = 0;
+};
+
+struct GitStash {
+    int index = 0; // stash@{index}
+    QString message;
+    QString branch; // made on
+    qint64 time = 0;
+};
+
+struct GitCommit {
+    QString hash;
+    QString shortHash;
+    QString author;
+    qint64 time = 0;
+    QString subject;
+    QString path; // file history: the file's path in this commit (it may have been renamed since)
+};
+
+// The git commands that GitRepo reads lists with, and their parsers (public
+// for the tests).
+namespace GitParse
+{
+QStringList branchesArgs();
+QList<GitBranch> branches(const QByteArray &out); // remote HEADs are left out
+QStringList stashesArgs();
+QList<GitStash> stashes(const QByteArray &out);
+QStringList commitsArgs(const QString &path); // "" = the whole project
+QList<GitCommit> commits(const QByteArray &out);
+// Whether git takes `name` for a new branch (the rules of check-ref-format).
+bool validBranchName(const QString &name);
+}
+
 // One git repository, driven through the git command line. Commands run one
 // at a time in the background; the status is re-read after every change.
 class GitRepo : public QObject
@@ -111,6 +153,23 @@ public:
     void init();
     void diff(const GitEntry &entry, const std::function<void(const QString &)> &done);
 
+    // Branches, stashes and history. The lists are read by their own git
+    // process, beside the queue (a slow fetch doesn't hold up a picker).
+    void branches(const std::function<void(const QList<GitBranch> &)> &done);
+    void checkout(const QString &branch);
+    void checkoutTracking(const QString &remoteBranch); // creates the local branch that tracks it
+    void createBranch(const QString &name, const QString &from); // and switches to it ("" = from HEAD)
+    bool canStash(bool includeUntracked) const; // there are changes to stash
+    void stash(const QString &message, bool includeUntracked);
+    void stashes(const std::function<void(const QList<GitStash> &)> &done);
+    void popLatestStash();
+    void applyStash(int index, bool pop);
+    void dropStash(int index);
+    // The last 200 commits of the project, or of one file ("" = all).
+    void log(const QString &path, const std::function<void(const QList<GitCommit> &)> &done);
+    // A commit as `git show` prints it: the whole commit or only `path`.
+    void show(const QString &hash, const QString &path, const std::function<void(const QString &)> &done);
+
 Q_SIGNALS:
     void changed();
     void busyChanged(bool busy);
@@ -129,6 +188,9 @@ private:
 
     void enqueue(Job job);
     void runNext();
+    // A read-only git command in a process of its own; `done` is dropped
+    // when the folder changes meanwhile.
+    void query(const QStringList &args, const std::function<void(int exitCode, const QByteArray &out)> &done);
     void parseStatus(const QByteArray &out);
     void setBusy(bool busy);
     void resetState();
