@@ -138,6 +138,20 @@ lieve --open-folder        # asks which folder to open
 groups is one document, so edits show in both, and closing one of its tabs keeps the other. An emptied group
 goes away. (The session reopens the files in a single group.)
 
+### Breadcrumbs and sticky scroll
+
+Above the editor, the **breadcrumbs** show where you are: the file's folders, the file, then the class,
+function or block around the cursor (`src › app › shop.ts › Shop › checkout`). Click a folder to browse it
+and open a file, click the file or a symbol to jump to another symbol at that level.
+
+While you scroll, **sticky scroll** keeps the first lines of the blocks you are in (class, function, `if`,
+loop…) at the top of the editor, with their line numbers, up to five; click one to go there.
+
+Both use the language server's symbols when there is one, otherwise Lieve works the blocks out from the text
+itself (braces, or indentation for Python, YAML and the like; headings in Markdown), so they work in any
+language. Turn them off with **View: Toggle Breadcrumbs** / **View: Toggle Sticky Scroll**, in the Settings
+window, or with `[editor] breadcrumbs=false` / `stickyScroll=false`.
+
 ### Markdown preview
 
 `Ctrl+K V` opens the preview of a Markdown file in the group beside it, `Ctrl+Shift+V` in the same group (press
@@ -429,5 +443,8 @@ Lieve puts together components written by others; the credit for the heavy lifti
 - **Microsoft**: language definitions (file extensions) are read from the built-in extensions of the
   installed [Visual Studio Code](https://github.com/microsoft/vscode).
 - Layout, shortcuts, the command palette, quick diff, hot exit, the settings window, the Problems panel, the
-  NPM SCRIPTS view, the merge conflict actions and colours, the branch/stash/history pickers and the Markdown
-  preview are modelled on Visual Studio Code's.
+  NPM SCRIPTS view, the merge conflict actions and colours, the branch/stash/history pickers, the Markdown
+  preview, the breadcrumbs and sticky scroll (which lines stay and what a click does) are modelled on
+  [Visual Studio Code](https://github.com/microsoft/vscode)'s (Microsoft, MIT).
+- The line numbers of the sticky lines are laid out like KTextEditor's own line number border
+  (`KateIconBorder::paintBorder` in `kateviewhelpers.cpp`, KDE, LGPL).

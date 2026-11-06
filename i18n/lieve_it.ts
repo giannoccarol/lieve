@@ -119,6 +119,19 @@
     </message>
 </context>
 <context>
+    <name>EditorOutline</name>
+    <message>
+        <location filename="../src/outline.cpp" line="+293"/>
+        <source>Toggle Breadcrumbs</source>
+        <translation>Mostra/nascondi breadcrumb</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Toggle Sticky Scroll</source>
+        <translation>Attiva/disattiva righe fisse in cima</translation>
+    </message>
+</context>
+<context>
     <name>Explorer</name>
     <message>
         <location filename="../src/explorer.cpp" line="+145"/>
@@ -1042,7 +1055,7 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/mainwindow.cpp" line="+395"/>
+        <location filename="../src/mainwindow.cpp" line="+396"/>
         <source>Explorer (Ctrl+Shift+E)</source>
         <translation>Esplora risorse (Ctrl+Shift+E)</translation>
     </message>
@@ -1053,12 +1066,12 @@ Le sue modifiche andranno perse.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+1872"/>
+        <location line="+1881"/>
         <source>Source Control (Ctrl+Shift+G)</source>
         <translation>Controllo del codice sorgente (Ctrl+Shift+G)</translation>
     </message>
     <message>
-        <location line="-1870"/>
+        <location line="-1879"/>
         <source>Side Bar (Ctrl+B)</source>
         <translation>Barra laterale (Ctrl+B)</translation>
     </message>
@@ -1068,13 +1081,13 @@ Le sue modifiche andranno perse.</translation>
         <translation>Terminale (Ctrl+J)</translation>
     </message>
     <message>
-        <location line="+224"/>
-        <location line="+1228"/>
+        <location line="+228"/>
+        <location line="+1233"/>
         <source>Choose a project</source>
         <translation>Scegli un progetto</translation>
     </message>
     <message>
-        <location line="-1209"/>
+        <location line="-1214"/>
         <location line="+209"/>
         <source>Open Folder…</source>
         <translation>Apri cartella…</translation>
@@ -1289,22 +1302,22 @@ Le sue modifiche andranno perse.</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+935"/>
+        <location line="+940"/>
         <source>Open Preview to the Side</source>
         <translation>Apri l&apos;anteprima a lato</translation>
     </message>
     <message>
-        <location line="-650"/>
+        <location line="-655"/>
         <source>Problems</source>
         <translation>Problemi</translation>
     </message>
     <message>
-        <location line="+474"/>
+        <location line="+478"/>
         <source>Open File</source>
         <translation>Apri file</translation>
     </message>
     <message>
-        <location line="+157"/>
+        <location line="+158"/>
         <source>Close</source>
         <translation>Chiudi</translation>
     </message>
@@ -2160,66 +2173,7 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>Settings</name>
     <message>
-        <location filename="../src/settings.cpp" line="+127"/>
-        <source>; Lieve settings. Changes take effect the next time Lieve starts.
-
-[editor]
-; auto = &quot;VSCodium Dark&quot; with the dark system theme, &quot;Breeze Light&quot; with the light one.
-; List of the available themes: ksyntaxhighlighter6 --list-themes
-theme=auto
-; Empty = the system fixed-width font (System Settings &gt; Fonts).
-fontFamily=
-fontSize=0
-minimap=false
-wordWrap=false
-; VS Code-style shortcuts (Ctrl+D, Alt+Up/Down, Ctrl+Shift+K, Ctrl+H, ...).
-vscodeKeys=true
-
-[explorer]
-; Names hidden in the Explorer.
-exclude=.git, .svn, .hg, CVS, .DS_Store, Thumbs.db
-
-[search]
-; Globs excluded from search and Quick Open (files in .gitignore are already excluded).
-exclude=**/node_modules, **/bower_components, **/*.code-search
-maxResults=5000
-
-[icons]
-; auto = the same icon theme set in VS Code (workbench.iconTheme).
-; Other values: vscode-icons, material-icon-theme, system
-theme=auto
-</source>
-        <translation>; Impostazioni di Lieve. Le modifiche valgono dal prossimo avvio.
-
-[editor]
-; auto = &quot;VSCodium Dark&quot; con il tema scuro di sistema, &quot;Breeze Light&quot; con quello chiaro.
-; Elenco dei temi disponibili: ksyntaxhighlighter6 --list-themes
-theme=auto
-; Vuoto = font a larghezza fissa di sistema (Impostazioni di sistema &gt; Caratteri).
-fontFamily=
-fontSize=0
-minimap=false
-wordWrap=false
-; Scorciatoie in stile VS Code (Ctrl+D, Alt+Su/Giu, Ctrl+Shift+K, Ctrl+H, ...).
-vscodeKeys=true
-
-[explorer]
-; Nomi nascosti in Esplora risorse.
-exclude=.git, .svn, .hg, CVS, .DS_Store, Thumbs.db
-
-[search]
-; Glob esclusi da ricerca e apertura rapida (i file in .gitignore sono gia esclusi).
-exclude=**/node_modules, **/bower_components, **/*.code-search
-maxResults=5000
-
-[icons]
-; auto = lo stesso tema di icone impostato in VS Code (workbench.iconTheme).
-; Altri valori: vscode-icons, material-icon-theme, system
-theme=auto
-</translation>
-    </message>
-    <message>
-        <location line="+30"/>
+        <location filename="../src/settings.cpp" line="+161"/>
         <source>
 [projects]
 ; Folders to look for projects in (git repositories, also one level down).
@@ -2403,7 +2357,74 @@ shell=auto
 </translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="-72"/>
+        <source>; Lieve settings. Changes take effect the next time Lieve starts.
+
+[editor]
+; auto = &quot;VSCodium Dark&quot; with the dark system theme, &quot;Breeze Light&quot; with the light one.
+; List of the available themes: ksyntaxhighlighter6 --list-themes
+theme=auto
+; Empty = the system fixed-width font (System Settings &gt; Fonts).
+fontFamily=
+fontSize=0
+minimap=false
+wordWrap=false
+; Above the editor: the path of the file and the symbols around the cursor (like VS Code).
+breadcrumbs=true
+; While scrolling, the first lines of the blocks you are in stay at the top of the editor.
+stickyScroll=true
+; VS Code-style shortcuts (Ctrl+D, Alt+Up/Down, Ctrl+Shift+K, Ctrl+H, ...).
+vscodeKeys=true
+
+[explorer]
+; Names hidden in the Explorer.
+exclude=.git, .svn, .hg, CVS, .DS_Store, Thumbs.db
+
+[search]
+; Globs excluded from search and Quick Open (files in .gitignore are already excluded).
+exclude=**/node_modules, **/bower_components, **/*.code-search
+maxResults=5000
+
+[icons]
+; auto = the same icon theme set in VS Code (workbench.iconTheme).
+; Other values: vscode-icons, material-icon-theme, system
+theme=auto
+</source>
+        <translation>; Impostazioni di Lieve. Le modifiche valgono dal prossimo avvio.
+
+[editor]
+; auto = &quot;VSCodium Dark&quot; con il tema scuro di sistema, &quot;Breeze Light&quot; con quello chiaro.
+; Elenco dei temi disponibili: ksyntaxhighlighter6 --list-themes
+theme=auto
+; Vuoto = font a larghezza fissa di sistema (Impostazioni di sistema &gt; Caratteri).
+fontFamily=
+fontSize=0
+minimap=false
+wordWrap=false
+; Sopra l&apos;editor: il percorso del file e i simboli in cui si trova il cursore (come in VS Code).
+breadcrumbs=true
+; Scorrendo, le prime righe dei blocchi in cui ci si trova restano in cima all&apos;editor.
+stickyScroll=true
+; Scorciatoie in stile VS Code (Ctrl+D, Alt+Su/Giu, Ctrl+Shift+K, Ctrl+H, ...).
+vscodeKeys=true
+
+[explorer]
+; Nomi nascosti in Esplora risorse.
+exclude=.git, .svn, .hg, CVS, .DS_Store, Thumbs.db
+
+[search]
+; Glob esclusi da ricerca e apertura rapida (i file in .gitignore sono gia esclusi).
+exclude=**/node_modules, **/bower_components, **/*.code-search
+maxResults=5000
+
+[icons]
+; auto = lo stesso tema di icone impostato in VS Code (workbench.iconTheme).
+; Altri valori: vscode-icons, material-icon-theme, system
+theme=auto
+</translation>
+    </message>
+    <message>
+        <location line="+93"/>
         <source>
 [updates]
 ; Checks every now and then whether a new version of Lieve is out on GitHub
@@ -2422,12 +2443,12 @@ check=true
     <name>SettingsDialog</name>
     <message>
         <location filename="../src/settingsdialog.cpp" line="+156"/>
-        <location line="+696"/>
+        <location line="+706"/>
         <source>Settings</source>
         <translation>Impostazioni</translation>
     </message>
     <message>
-        <location line="-668"/>
+        <location line="-678"/>
         <source>Search settings</source>
         <translation>Cerca impostazioni</translation>
     </message>
@@ -2509,14 +2530,14 @@ check=true
     <message>
         <location line="+2"/>
         <location line="+34"/>
-        <location line="+112"/>
+        <location line="+122"/>
         <location line="+38"/>
         <location line="+248"/>
         <source>Automatic</source>
         <translation>Automatico</translation>
     </message>
     <message>
-        <location line="-421"/>
+        <location line="-431"/>
         <source>Color Theme</source>
         <translation>Tema colori</translation>
     </message>
@@ -2630,6 +2651,16 @@ check=true
     </message>
     <message>
         <location line="+4"/>
+        <source>Breadcrumbs</source>
+        <translation>Breadcrumb</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Sticky Scroll</source>
+        <translation>Righe fisse in cima (sticky scroll)</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>VS Code Shortcuts</source>
         <translation>Scorciatoie di VS Code</translation>
     </message>
@@ -2919,6 +2950,18 @@ check=true
         <location line="+0"/>
         <source>%1 settings found</source>
         <translation>%1 impostazioni trovate</translation>
+    </message>
+    <message>
+        <location filename="../src/outline.cpp" line="-15"/>
+        <location filename="../src/settingsdialog.cpp" line="-562"/>
+        <source>Shows the path of the file and the symbols around the cursor above the editor.</source>
+        <translation>Mostra sopra l&apos;editor il percorso del file e i simboli in cui si trova il cursore.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location filename="../src/settingsdialog.cpp" line="+5"/>
+        <source>Keeps the first lines of the blocks you are scrolled into at the top of the editor.</source>
+        <translation>Tiene in cima all&apos;editor le prime righe dei blocchi in cui ci si trova scorrendo.</translation>
     </message>
 </context>
 <context>

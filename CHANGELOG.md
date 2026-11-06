@@ -3,6 +3,22 @@
 Each version has its own section here: its text becomes the GitHub release notes and is what
 Lieve shows when it offers the update.
 
+## v0.1.3
+
+- Problems panel (`Ctrl+Shift+M`, or click the count in the status bar): a tab next to the terminals with the
+  language servers' problems, grouped by file; click one to jump to it.
+- Git: switch and create branches from the status bar (`Git: Checkout to…`), stash (also untracked, apply,
+  pop, drop), project and file history with each commit's changes in a read-only tab.
+- Merge conflicts: current and incoming changes tinted, "Accept Current | Incoming | Both" on each conflict,
+  next/previous and accept-all commands.
+- NPM SCRIPTS section in the Explorer: run a `package.json` script in its own terminal tab (npm, pnpm, yarn or
+  bun), `Tasks: Run npm Script…` and `Tasks: Rerun Last Script`.
+- Breadcrumbs above the editor (folders, file, symbols around the cursor, with dropdowns) and sticky scroll
+  (the first lines of the blocks you are in stay at the top), from the language server or from the text.
+- Markdown preview (`Ctrl+Shift+V`, to the side with `Ctrl+K V`), drawn by Qt without a web engine, updated
+  as you type and scrolling with the editor.
+- Rounded selection and hover in the side bar lists and pickers.
+
 ## v0.1.2
 
 - Command Palette (`Ctrl+Shift+P`, `F1`, or `>` in Quick Open) with VS Code-style categories, shortcuts
