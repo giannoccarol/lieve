@@ -2340,7 +2340,8 @@ void MainWindow::colorDiff(KTextEditor::Document *doc)
         attribute(QColor(56, 139, 253, dark ? 45 : 35)),
     };
     const auto kindOf = [](const QString &line) {
-        if (line.startsWith(QLatin1String("+++ ")) || line.startsWith(QLatin1String("--- "))) {
+        // file headers, and the "---" between a commit's message and its stat
+        if (line.startsWith(QLatin1String("+++ ")) || line.startsWith(QLatin1String("--- ")) || line == QLatin1String("---")) {
             return Plain;
         }
         if (line.startsWith(QLatin1Char('+'))) {
