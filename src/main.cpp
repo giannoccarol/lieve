@@ -5,6 +5,7 @@
 #include "jumplist.h"
 #include "lsp.h"
 #include "mainwindow.h"
+#include "mergeconflicts.h"
 #include "problemspanel.h"
 #include "quickopen.h"
 #include "searchpanel.h"
@@ -716,6 +717,22 @@ void setupTestHooks(QApplication &app)
             const int at = qEnvironmentVariableIntValue("LIEVE_TEST_PROBLEMS_AT");
             QTimer::singleShot(at > 0 ? at : 1000, window, [window, problemsTest] {
                 testProblems(window, problemsTest);
+            });
+        }
+        // LIEVE_TEST_CONFLICTS: steps on the focused editor, see MergeConflicts::runTest()
+        const QString conflictSteps = qEnvironmentVariable("LIEVE_TEST_CONFLICTS");
+        if (!conflictSteps.isEmpty()) {
+            QTimer::singleShot(800, window, [window, conflictSteps] {
+                const auto views = window->findChildren<KTextEditor::View *>();
+                KTextEditor::View *focused = views.value(0);
+                for (KTextEditor::View *view : views) {
+                    if (view->isAncestorOf(QApplication::focusWidget())) {
+                        focused = view;
+                    }
+                }
+                if (focused) {
+                    MergeConflicts::runTest(focused, conflictSteps);
+                }
             });
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_KEYS")) {
