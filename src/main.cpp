@@ -52,6 +52,7 @@
 #include <QPushButton>
 #include <QShortcut>
 #include <QSpinBox>
+#include <QTabBar>
 #include <QToolButton>
 #include <QTreeView>
 #include <QTreeWidget>
@@ -61,6 +62,7 @@
 #include <QTimer>
 #include <QTranslator>
 
+#include <algorithm>
 #include <memory>
 
 namespace
@@ -460,6 +462,96 @@ void hotExitTest(const QString &screenshot)
     });
 }
 
+// LIEVE_TEST_MARKDOWN=step,step...: one step every 500 ms on the Markdown file
+// open in the window: "side" (Ctrl+K V), "open" (Ctrl+Shift+V, on a preview
+// back to the file), "type" (adds a heading and a paragraph at the top),
+// "line=N" (scrolls the editor to line N), "close" (Ctrl+W), "cycle"
+// (Ctrl+Tab), "middle=Text" (middle-clicks the first tab whose title starts
+// with Text). After each step the groups and their tabs are printed
+// (* = current tab of the group, > = the active group).
+void markdownTest(MainWindow *window, const QStringList &steps)
+{
+    const auto trigger = [window](const QKeySequence &key) {
+        const auto actions = window->actions();
+        for (QAction *action : actions) { // by shortcut: the text depends on the language
+            if (action->shortcuts().contains(key)) {
+                action->trigger();
+                return;
+            }
+        }
+    };
+    const auto groups = [window] {
+        QList<TabView *> list;
+        const auto all = window->findChildren<TabView *>();
+        for (TabView *tabView : all) {
+            if (tabView->parentWidget() && tabView->parentWidget()->objectName() == QLatin1String("editorSplit")) {
+                list << tabView;
+            }
+        }
+        std::sort(list.begin(), list.end(), [](TabView *a, TabView *b) {
+            return a->x() < b->x();
+        });
+        return list;
+    };
+    const auto source = [window]() -> KTextEditor::View * {
+        const auto views = window->findChildren<KTextEditor::View *>();
+        for (KTextEditor::View *view : views) {
+            if (view->document()->url().path().endsWith(QLatin1String(".md"))) {
+                return view;
+            }
+        }
+        return nullptr;
+    };
+    for (qsizetype i = 0; i < steps.size(); ++i) {
+        QTimer::singleShot(400 + 500 * int(i), window, [=] {
+            const QString step = steps.at(i);
+            if (step == QLatin1String("side")) {
+                trigger(QKeySequence(QStringLiteral("Ctrl+K, V")));
+            } else if (step == QLatin1String("open")) {
+                trigger(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
+            } else if (step == QLatin1String("close")) {
+                trigger(QKeySequence(Qt::CTRL | Qt::Key_W));
+            } else if (step == QLatin1String("cycle")) {
+                trigger(QKeySequence(Qt::CTRL | Qt::Key_Tab));
+            } else if (KTextEditor::View *view = source(); view && step == QLatin1String("type")) {
+                view->document()->insertText(KTextEditor::Cursor(0, 0), QStringLiteral("## Typed heading\n\nTyped *text* while the preview is open.\n\n"));
+            } else if (view && step.startsWith(QLatin1String("line="))) {
+                view->setScrollPosition(KTextEditor::Cursor(step.mid(5).toInt(), 0));
+            } else if (step.startsWith(QLatin1String("middle="))) {
+                const auto click = [&groups](const QString &title) {
+                    for (TabView *group : groups()) {
+                        QTabBar *bar = group->tabBar();
+                        for (int t = 0; t < bar->count(); ++t) {
+                            if (bar->tabText(t).startsWith(title)) {
+                                const QPoint at = bar->tabRect(t).center();
+                                QMouseEvent press(QEvent::MouseButtonPress, at, bar->mapToGlobal(at), Qt::MiddleButton, Qt::MiddleButton, Qt::NoModifier);
+                                QMouseEvent release(QEvent::MouseButtonRelease, at, bar->mapToGlobal(at), Qt::MiddleButton, Qt::NoButton, Qt::NoModifier);
+                                QCoreApplication::sendEvent(bar, &press);
+                                QCoreApplication::sendEvent(bar, &release);
+                                return;
+                            }
+                        }
+                    }
+                };
+                click(step.mid(7));
+            }
+            QTimer::singleShot(150, window, [=] { // once the step has been handled
+                QStringList report;
+                const QList<TabView *> list = groups();
+                for (TabView *group : list) {
+                    QStringList tabs;
+                    for (int t = 0; t < group->count(); ++t) {
+                        tabs << (t == group->currentIndex() ? QStringLiteral("*") : QString()) + group->tabBar()->tabText(t);
+                    }
+                    const bool active = group->isAncestorOf(QApplication::focusWidget());
+                    report << (active ? QStringLiteral(">[") : QStringLiteral("[")) + tabs.join(QStringLiteral(", ")) + QLatin1Char(']');
+                }
+                qInfo().noquote() << "md-step" << step << "->" << report.join(QLatin1Char(' ')) << "| title:" << window->windowTitle();
+            });
+        });
+    }
+}
+
 // Used by the automated checks (LIEVE_SCREENSHOT=file.png): render the first
 // window to a PNG and quit. Never set in normal use.
 void setupTestHooks(QApplication &app)
@@ -666,6 +758,9 @@ void setupTestHooks(QApplication &app)
                 trigger(QKeySequence(Qt::CTRL | Qt::Key_W));
             }
             qInfo().noquote() << "groups" << window->findChildren<TabView *>().size() - 1; // minus the terminal's
+        }
+        if (qEnvironmentVariableIsSet("LIEVE_TEST_MARKDOWN")) {
+            markdownTest(window, qEnvironmentVariable("LIEVE_TEST_MARKDOWN").split(QLatin1Char(','), Qt::SkipEmptyParts));
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_HOVER")) { // show the hover look of the window buttons
             for (QToolButton *button : window->findChildren<QToolButton *>()) {

@@ -8,6 +8,7 @@
 #include "gitgutter.h"
 #include "gitpanel.h"
 #include "lsp.h"
+#include "markdownpreview.h"
 #include "mergeconflicts.h"
 #include "npmscripts.h"
 #include "prettier.h"
@@ -868,9 +869,7 @@ void MainWindow::buildActions()
         saveAll();
     });
     QAction *closeEditorAction = addShortcut(tr("Close Editor"), {QKeySequence(Qt::CTRL | Qt::Key_W), QKeySequence(Qt::CTRL | Qt::Key_F4)}, false, [this] {
-        if (KTextEditor::View *view = currentView()) {
-            closeView(view);
-        }
+        closeTab(m_tabs->currentWidget()); // also a preview
     });
     QAction *nextEditorAction = addShortcut(tr("Next Editor"), {QKeySequence(Qt::CTRL | Qt::Key_Tab), QKeySequence(Qt::CTRL | Qt::Key_PageDown)}, false, [this] {
         cycleTab(1);
@@ -946,6 +945,18 @@ void MainWindow::buildActions()
     for (const LspManager::Shortcut &shortcut : lspShortcuts) {
         addShortcut(shortcut.text, shortcut.keys, false, shortcut.slot);
     }
+    // Markdown preview, like VS Code's (enabled on Markdown files, see updateMarkdownActions()).
+    m_previewAction = addShortcut(tr("Open Preview"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V)}, false, [this] {
+        openMarkdownPreview(false);
+    });
+    m_previewSideAction = addShortcut(tr("Open Preview to the Side"), {QKeySequence(QStringLiteral("Ctrl+K, V"))}, false, [this] {
+        openMarkdownPreview(true);
+    });
+    for (QAction *a : {m_previewAction, m_previewSideAction}) {
+        a->setIcon(MarkdownPreview::icon());
+        setCommandCategory(a, "Markdown"); // "Markdown: Open Preview", as in VS Code
+    }
+    updateMarkdownActions();
 
     quickOpenAction->setObjectName(QStringLiteral("actionQuickOpen"));
     sourceControlAction->setObjectName(QStringLiteral("actionSourceControl"));
@@ -1275,9 +1286,7 @@ TabView *MainWindow::createGroup()
     m_editorSplit->addWidget(group);
     m_groups.append(group);
     connect(group, &TabView::tabCloseRequested, this, [this, group](int index) {
-        if (auto *view = qobject_cast<KTextEditor::View *>(group->widget(index))) {
-            closeView(view);
-        }
+        closeTab(group->widget(index));
     });
     connect(group, &TabView::currentChanged, this, [this, group] {
         if (group == m_tabs) {
@@ -1288,6 +1297,7 @@ TabView *MainWindow::createGroup()
         setActiveGroup(group);
         showTabMenu(pos);
     });
+    addPreviewButton(group);
     return group;
 }
 
@@ -1396,8 +1406,8 @@ void MainWindow::focusGroup(int index)
 {
     if (index < m_groups.size()) {
         setActiveGroup(m_groups.at(index));
-        if (KTextEditor::View *view = currentView()) {
-            view->setFocus();
+        if (QWidget *page = m_tabs->currentWidget()) { // an editor or a preview
+            page->setFocus();
         }
     } else if (index == m_groups.size()) {
         splitEditor();
@@ -1672,8 +1682,9 @@ bool MainWindow::closeAllViews()
 
 void MainWindow::closeTabsWhere(const std::function<bool(int)> &predicate)
 {
-    for (int i = m_tabs->count() - 1; i >= 0; --i) {
-        if (predicate(i) && !closeView(viewAt(i))) {
+    const TabView *group = m_tabs;
+    for (int i = m_tabs->count() - 1; i >= 0 && m_tabs == group; --i) { // (a preview closes with its file: the group may go)
+        if (predicate(i) && !closeTab(m_tabs->widget(i))) {
             return;
         }
     }
@@ -1801,6 +1812,11 @@ void MainWindow::updateTabTitles()
     for (int i = 0; i < group->count(); ++i) {
         auto *view = qobject_cast<KTextEditor::View *>(group->widget(i));
         if (!view) {
+            if (auto *preview = qobject_cast<MarkdownPreview *>(group->widget(i)); preview && preview->source()) {
+                const QString path = localPath(preview->source());
+                group->setTabText(i, preview->title().replace(QLatin1Char('&'), QStringLiteral("&&")));
+                group->setTabToolTip(i, path.isEmpty() ? preview->title() : prettyPath(path));
+            }
             continue;
         }
         KTextEditor::Document *doc = view->document();
@@ -1827,6 +1843,8 @@ void MainWindow::updateWindowTitle()
     QStringList parts;
     if (KTextEditor::View *view = currentView()) {
         parts << documentTitle(view->document()) + (view->document()->isModified() ? QStringLiteral(" ●") : QString());
+    } else if (auto *preview = qobject_cast<MarkdownPreview *>(m_tabs->currentWidget())) {
+        parts << preview->title();
     }
     if (!m_root.isEmpty()) {
         parts << QFileInfo(m_root).fileName();
@@ -1838,22 +1856,25 @@ void MainWindow::updateWindowTitle()
 void MainWindow::showTabMenu(const QPoint &pos)
 {
     const int index = m_tabs->tabBar()->tabAt(pos);
+    QWidget *page = m_tabs->widget(index); // an editor, or a Markdown preview
     KTextEditor::View *view = viewAt(index);
-    if (!view) {
+    auto *preview = qobject_cast<MarkdownPreview *>(page);
+    if (!view && !(preview && preview->source())) {
         return;
     }
-    const QString path = localPath(view->document());
+    KTextEditor::Document *doc = view ? view->document() : preview->source();
+    const QString path = localPath(doc);
     QMenu menu(this);
-    menu.addAction(QIcon::fromTheme(QStringLiteral("tab-close")), tr("Close"), this, [this, view] {
-        closeView(view);
+    menu.addAction(QIcon::fromTheme(QStringLiteral("tab-close")), tr("Close"), this, [this, page] {
+        closeTab(page);
     });
-    menu.addAction(tr("Close Others"), this, [this, view] {
-        closeTabsWhere([this, view](int i) {
-            return viewAt(i) != view;
+    menu.addAction(tr("Close Others"), this, [this, page] {
+        closeTabsWhere([this, page](int i) {
+            return m_tabs->widget(i) != page;
         });
     });
-    menu.addAction(tr("Close to the Right"), this, [this, view] {
-        const int at = m_tabs->indexOf(view);
+    menu.addAction(tr("Close to the Right"), this, [this, page] {
+        const int at = m_tabs->indexOf(page);
         closeTabsWhere([at](int i) {
             return i > at;
         });
@@ -1861,6 +1882,13 @@ void MainWindow::showTabMenu(const QPoint &pos)
     menu.addAction(tr("Close All"), this, [this] {
         closeAllViews();
     });
+    if (view && MarkdownPreview::isMarkdown(doc)) {
+        menu.addSeparator();
+        menu.addAction(MarkdownPreview::icon(), tr("Open Preview to the Side"), this, [this, view] {
+            activateView(view);
+            openMarkdownPreview(true);
+        });
+    }
     if (!path.isEmpty()) {
         menu.addSeparator();
         menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), tr("Copy Path"), this, [path] {
@@ -1963,6 +1991,7 @@ void MainWindow::updateCursorStatus()
 
 void MainWindow::updateStatusBar()
 {
+    updateMarkdownActions(); // the language may have changed, or the tab
     updateGitStatus();
     KTextEditor::View *view = currentView();
     if (!view) {
@@ -2511,8 +2540,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         if (event->type() == QEvent::MouseButtonPress) {
             setActiveGroup(group); // before the tab bar changes its current tab
         } else if (event->type() == QEvent::MouseButtonRelease && mouse->button() == Qt::MiddleButton) {
-            if (auto *view = qobject_cast<KTextEditor::View *>(group->widget(group->tabBar()->tabAt(mouse->position().toPoint())))) {
-                closeView(view);
+            if (QWidget *page = group->widget(group->tabBar()->tabAt(mouse->position().toPoint()))) {
+                closeTab(page); // an editor or a preview
                 return true;
             }
         }
@@ -2583,6 +2612,9 @@ void MainWindow::saveSession()
     QStringList backups;
     int activeIndex = -1;
     KTextEditor::View *current = currentView();
+    if (auto *preview = qobject_cast<MarkdownPreview *>(m_tabs->currentWidget()); preview && preview->source()) {
+        current = preview->source()->views().value(0); // previews are not kept: their file is the active one
+    }
     for (KTextEditor::Document *doc : documents()) { // split groups are not kept: each file once
         KTextEditor::View *view = (current && current->document() == doc) ? current : doc->views().value(0);
         const QString path = localPath(doc);
@@ -2597,7 +2629,7 @@ void MainWindow::saveSession()
             backups << backup;
         }
     }
-    const KTextEditor::View *active = currentView();
+    const KTextEditor::View *active = current;
     const QString key = sessionKey(m_root);
     s.setValue(key + QStringLiteral("/path"), m_root);
     s.setValue(key + QStringLiteral("/files"), files);
@@ -2820,4 +2852,157 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
     state().sync();
     event->accept();
+}
+
+// ---------------------------------------------------------------------------
+// Markdown preview: a tab that is not an editor. It is not part of the
+// session (the file is), and it closes with its document.
+
+void MainWindow::openMarkdownPreview(bool toSide)
+{
+    if (auto *preview = qobject_cast<MarkdownPreview *>(m_tabs->currentWidget())) {
+        // On a preview: back to its file, like VS Code's "Show Source".
+        KTextEditor::View *source = nullptr;
+        for (KTextEditor::View *view : allViews()) {
+            if (view->document() == preview->source() && (!source || groupOf(view) == m_tabs)) {
+                source = view;
+            }
+        }
+        if (source && !toSide) {
+            activateView(source);
+            source->setFocus();
+        }
+        return;
+    }
+    KTextEditor::View *view = currentView();
+    if (!view || !MarkdownPreview::isMarkdown(view->document())) {
+        return;
+    }
+    KTextEditor::Document *doc = view->document();
+    TabView *group = m_tabs;
+    if (toSide) { // the group on the right, else the one on the left, else a new one
+        const qsizetype at = m_groups.indexOf(m_tabs);
+        group = at + 1 < m_groups.size() ? m_groups.at(at + 1) : at > 0 ? m_groups.at(at - 1) : nullptr;
+        if (!group) {
+            group = createGroup();
+            QList<int> sizes;
+            for (qsizetype i = 0; i < m_groups.size(); ++i) {
+                sizes << m_editorSplit->width() / int(m_groups.size());
+            }
+            m_editorSplit->setSizes(sizes);
+        }
+    }
+    MarkdownPreview *preview = nullptr;
+    for (int i = 0; i < group->count() && !preview; ++i) {
+        auto *p = qobject_cast<MarkdownPreview *>(group->widget(i));
+        preview = p && p->source() == doc ? p : nullptr;
+    }
+    if (!preview) {
+        preview = new MarkdownPreview(doc, group);
+        connect(preview, &MarkdownPreview::focused, this, [this, preview] {
+            setActiveGroup(groupOfPage(preview));
+        });
+        connect(preview, &MarkdownPreview::titleChanged, this, [this] {
+            updateTabTitles();
+            updateWindowTitle();
+        });
+        connect(preview, &MarkdownView::openFileRequested, this, [this](const QString &path) {
+            openFile(path);
+        });
+        // Closing the file (or the project) closes its preview.
+        connect(doc, &QObject::destroyed, this, [this, preview = QPointer<MarkdownPreview>(preview)] {
+            if (preview) {
+                closeTab(preview);
+            }
+        });
+        const int index = group->count() == 0 ? 0 : group->currentIndex() + 1; // next to the current tab
+        group->insertTab(index, preview, QString());
+        group->setTabIcon(index, MarkdownPreview::icon());
+        updateTabTitles();
+    }
+    group->setCurrentWidget(preview);
+    if (toSide) {
+        view->setFocus(); // keep typing, the preview follows
+    } else {
+        preview->setFocus();
+    }
+    updateWindowTitle();
+}
+
+bool MainWindow::closeTab(QWidget *page)
+{
+    if (auto *view = qobject_cast<KTextEditor::View *>(page)) {
+        return closeView(view);
+    }
+    TabView *group = groupOfPage(page);
+    if (!group) {
+        return true; // nothing to close
+    }
+    const bool focused = page->isAncestorOf(QApplication::focusWidget()) || page->hasFocus();
+    group->removeTab(group->indexOf(page));
+    delete page;
+    if (group->count() == 0) {
+        removeGroup(group);
+    }
+    if (focused) {
+        if (QWidget *current = m_tabs->currentWidget()) {
+            current->setFocus();
+        }
+    }
+    return true;
+}
+
+TabView *MainWindow::groupOfPage(QWidget *page) const
+{
+    for (TabView *group : m_groups) {
+        if (page && group->indexOf(page) >= 0) {
+            return group;
+        }
+    }
+    return nullptr;
+}
+
+// VS Code's button at the right of the tab bar, on Markdown files.
+void MainWindow::addPreviewButton(TabView *group)
+{
+    auto *corner = new QWidget(group);
+    corner->setObjectName(QStringLiteral("previewCorner"));
+    auto *layout = new QHBoxLayout(corner);
+    layout->setContentsMargins(0, 0, 4, 0);
+    layout->setSpacing(0);
+    auto *button = new QToolButton(corner);
+    button->setIcon(MarkdownPreview::icon());
+    button->setToolTip(tr("Open Preview to the Side (Ctrl+K V)"));
+    button->setAutoRaise(true);
+    button->setFocusPolicy(Qt::NoFocus);
+    layout->addWidget(button);
+    group->setCornerWidget(corner);
+    corner->hide();
+    connect(group, &TabView::currentChanged, corner, [group, corner] {
+        auto *view = qobject_cast<KTextEditor::View *>(group->currentWidget());
+        corner->setVisible(view && MarkdownPreview::isMarkdown(view->document()));
+    });
+    connect(button, &QToolButton::clicked, this, [this, group] {
+        if (auto *view = qobject_cast<KTextEditor::View *>(group->currentWidget())) {
+            activateView(view);
+            openMarkdownPreview(true);
+        }
+    });
+}
+
+void MainWindow::updateMarkdownActions()
+{
+    if (!m_previewAction) {
+        return;
+    }
+    KTextEditor::View *view = currentView();
+    const bool markdown = view && MarkdownPreview::isMarkdown(view->document());
+    m_previewAction->setEnabled(markdown || qobject_cast<MarkdownPreview *>(m_tabs->currentWidget())); // on a preview: back to the file
+    m_previewSideAction->setEnabled(markdown);
+    for (TabView *group : std::as_const(m_groups)) {
+        if (auto *corner = group->findChild<QWidget *>(QStringLiteral("previewCorner"), Qt::FindDirectChildrenOnly)) {
+            auto *v = qobject_cast<KTextEditor::View *>(group->currentWidget());
+            corner->setVisible(v && MarkdownPreview::isMarkdown(v->document()));
+        }
+    }
 }

@@ -172,6 +172,13 @@ private:
     bool keepUnsaved();
     KTextEditor::View *restoreDocument(const QString &path, const QString &backupName);
 
+    // Markdown preview (markdownpreview.h): tabs that are not editors
+    void openMarkdownPreview(bool toSide);
+    bool closeTab(QWidget *page); // an editor or a preview; false if cancelled
+    TabView *groupOfPage(QWidget *page) const;
+    void addPreviewButton(TabView *group);
+    void updateMarkdownActions();
+
     QString m_root;
     QToolBar *m_activityBar = nullptr;
     QAction *m_actExplorer = nullptr;
@@ -225,4 +232,6 @@ private:
     bool m_keepBackups = false; // closing with hot exit: the documents go, their backups stay
     // Coloured backgrounds of the lines in diff tabs
     QHash<KTextEditor::Document *, std::shared_ptr<std::vector<std::unique_ptr<KTextEditor::MovingRange>>>> m_diffRanges;
+    QAction *m_previewAction = nullptr; // Markdown: Open Preview (Ctrl+Shift+V)
+    QAction *m_previewSideAction = nullptr; // Markdown: Open Preview to the Side (Ctrl+K V)
 };
