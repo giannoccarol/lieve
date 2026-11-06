@@ -1,5 +1,6 @@
 #include "explorer.h"
 
+#include "roundedrows.h"
 #include "settings.h"
 #include "vscodeicons.h"
 
@@ -223,7 +224,7 @@ Explorer::Explorer(QWidget *parent)
     m_proxy->setDynamicSortFilter(true);
     m_proxy->sort(0, Qt::AscendingOrder);
 
-    m_tree = new QTreeView(m_stack);
+    m_tree = new RoundedTree<QTreeView>(m_stack);
     m_tree->setModel(m_proxy);
     m_tree->setHeaderHidden(true);
     for (int c = 1; c < m_proxy->columnCount(); ++c) {

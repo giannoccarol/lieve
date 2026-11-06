@@ -1,6 +1,7 @@
 #include "searchpanel.h"
 
 #include "delegates.h"
+#include "roundedrows.h"
 #include "settings.h"
 #include "vscodeicons.h"
 
@@ -418,7 +419,7 @@ SearchPanel::SearchPanel(QWidget *parent)
     m_status->setWordWrap(true);
     layout->addWidget(m_status);
 
-    m_results = new QTreeWidget(this);
+    m_results = new RoundedTree<QTreeWidget>(this);
     m_results->setHeaderHidden(true);
     m_results->setColumnCount(1);
     m_results->setUniformRowHeights(true);

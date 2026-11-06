@@ -1,4 +1,5 @@
 #include "delegates.h"
+#include "explorer.h"
 #include "gitgutter.h"
 #include "gitpanel.h"
 #include "jumplist.h"
@@ -47,6 +48,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QToolButton>
+#include <QTreeView>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <QLocale>
@@ -379,6 +381,31 @@ void setupTestHooks(QApplication &app)
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_REPLACE")) {
             testReplace(window, search);
+        }
+        // "<extra rows to select>:<row to hover, counted from the current one>[:nofocus]"
+        const QStringList explorerTest = qEnvironmentVariable("LIEVE_TEST_EXPLORER").split(QLatin1Char(':'), Qt::SkipEmptyParts);
+        if (!explorerTest.isEmpty()) {
+            QTimer::singleShot(1200, window, [window, explorerTest] {
+                auto *tree = window->findChild<Explorer *>()->findChild<QTreeView *>();
+                if (!explorerTest.contains(QLatin1String("nofocus"))) {
+                    tree->setFocus();
+                }
+                QModelIndex index = tree->currentIndex();
+                for (int i = 0; i < explorerTest.value(0).toInt(); ++i) {
+                    index = tree->indexBelow(index);
+                    tree->selectionModel()->select(index, QItemSelectionModel::Select | QItemSelectionModel::Rows);
+                }
+                const int offset = explorerTest.value(1).toInt();
+                if (offset != 0) {
+                    QModelIndex hover = tree->currentIndex();
+                    for (int i = 0; i < std::abs(offset); ++i) {
+                        hover = offset > 0 ? tree->indexBelow(hover) : tree->indexAbove(hover);
+                    }
+                    const QPointF pos = QRectF(tree->visualRect(hover)).center();
+                    QHoverEvent event(QEvent::HoverMove, pos, tree->viewport()->mapToGlobal(pos), QPointF(-1, -1));
+                    QApplication::sendEvent(tree->viewport(), &event);
+                }
+            });
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_SWITCHER")) {
             window->showProjectSwitcher();

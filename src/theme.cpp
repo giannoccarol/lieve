@@ -205,9 +205,15 @@ QTreeView::item:selected, QListView::item:selected { background: @selectionInact
 QTreeView::item:selected:active, QListView::item:selected:active { background: @selection; color: @fg; }
 /* keyboard-driven lists (Ctrl+P, Ctrl+R, project chooser) never take focus */
 #overlay QListView::item:selected, #chooserFrame QListView::item:selected { background: @selection; }
+#overlay QListView::item, #chooserFrame QListView::item { border-radius: 6px; }
 QTreeView::branch { background: transparent; }
 QTreeView::branch:selected { background: @selectionInactive; }
 QTreeView::branch:selected:active { background: @selection; }
+/* side bar trees paint their own rounded rows (roundedrows.cpp) */
+QTreeView[roundedRows="true"] { show-decoration-selected: 0; }
+QTreeView[roundedRows="true"]::item:hover, QTreeView[roundedRows="true"]::item:selected,
+QTreeView[roundedRows="true"]::item:selected:active, QTreeView[roundedRows="true"]::branch:selected,
+QTreeView[roundedRows="true"]::branch:selected:active { background: transparent; }
 QTreeView::branch:has-children:!has-siblings:closed, QTreeView::branch:closed:has-children:has-siblings { image: url(@chevronRight); }
 QTreeView::branch:open:has-children:!has-siblings, QTreeView::branch:open:has-children:has-siblings { image: url(@chevronDown); }
 

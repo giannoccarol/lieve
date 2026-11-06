@@ -1,5 +1,6 @@
 #include "gitpanel.h"
 
+#include "roundedrows.h"
 #include "settings.h"
 #include "theme.h"
 #include "vscodeicons.h"
@@ -393,7 +394,7 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
     commitRow->addWidget(m_commitMenu);
     rl->addLayout(commitRow);
 
-    m_tree = new QTreeWidget(repoPage);
+    m_tree = new RoundedTree<QTreeWidget>(repoPage);
     m_tree->setHeaderHidden(true);
     m_tree->setColumnCount(1);
     m_tree->setFrameShape(QFrame::NoFrame);
