@@ -9,6 +9,7 @@
 #include "gitpanel.h"
 #include "lsp.h"
 #include "prettier.h"
+#include "problemspanel.h"
 #include "projectlist.h"
 #include "projects.h"
 #include "quickopen.h"
@@ -816,6 +817,9 @@ void MainWindow::buildActions()
     QAction *panelAction = addShortcut(tr("Toggle Panel"), {QKeySequence(Qt::CTRL | Qt::Key_J)}, true, [this] {
         setTerminalVisible(m_terminal->isHidden());
     });
+    QAction *problemsAction = addShortcut(tr("Show Problems"), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M)}, true, [this] {
+        toggleProblems(true);
+    });
     QAction *terminalAction = addShortcut(tr("Terminal"),
                                           {QKeySequence(Qt::CTRL | Qt::Key_QuoteLeft), QKeySequence(Qt::CTRL | Qt::Key_Ograve)},
                                           true,
@@ -917,6 +921,7 @@ void MainWindow::buildActions()
 
     quickOpenAction->setObjectName(QStringLiteral("actionQuickOpen"));
     sourceControlAction->setObjectName(QStringLiteral("actionSourceControl"));
+    problemsAction->setObjectName(QStringLiteral("actionProblems"));
     projects->setIcon(QIcon::fromTheme(QStringLiteral("view-list-details")));
     openFolderAction->setIcon(QIcon::fromTheme(QStringLiteral("folder-open")));
     newWindow->setIcon(QIcon::fromTheme(QStringLiteral("window-new")));
@@ -932,7 +937,7 @@ void MainWindow::buildActions()
 
     // Command palette prefixes, as in VS Code ("View: Toggle Panel").
     for (QAction *a : {explorerAction, sourceControlAction, sideBarAction, panelAction, terminalAction, closeEditorAction, nextEditorAction, previousEditorAction,
-                       splitAction, focusFirst, focusSecond, focusThird}) {
+                       splitAction, focusFirst, focusSecond, focusThird, problemsAction}) {
         setCommandCategory(a, CommandCategory::View);
     }
     for (QAction *a : {projects, openFolderAction, newWindow, newFile, openFileAction, saveAllAction, saveRaw, closeProjectAction, quitAction}) {
@@ -1114,7 +1119,7 @@ void MainWindow::showSearch(const QString &text, bool replace)
 void MainWindow::setTerminalVisible(bool visible)
 {
     if (visible) {
-        if (!m_terminal->hasTerminals()) {
+        if (m_terminal->isEmpty()) {
             m_terminal->setWorkingDirectory(m_root.isEmpty() ? QDir::homePath() : m_root);
             m_terminal->newTerminal();
         }
@@ -1141,11 +1146,14 @@ void MainWindow::setTerminalVisible(bool visible)
 // focus, hide it.
 void MainWindow::toggleTerminalFocus()
 {
+    const bool onTerminal = !m_problems || m_terminal->currentPage() != m_problems;
     if (m_terminal->isHidden()) {
+        m_terminal->selectTerminal();
         setTerminalVisible(true);
-    } else if (m_terminal->isAncestorOf(QApplication::focusWidget())) {
+    } else if (onTerminal && m_terminal->isAncestorOf(QApplication::focusWidget())) {
         setTerminalVisible(false);
     } else {
+        m_terminal->selectTerminal();
         m_terminal->focusCurrent();
     }
 }
@@ -1156,6 +1164,35 @@ void MainWindow::newTerminal(const QString &dir)
         m_terminal->setWorkingDirectory(m_root.isEmpty() ? QDir::homePath() : m_root);
     }
     m_terminal->newTerminal(dir);
+    setTerminalVisible(true);
+}
+
+// Like VS Code: Ctrl+Shift+M (`byFocus`) shows and focuses the Problems tab
+// of the bottom panel, or hides the panel if the list has the focus; the
+// status bar item shows it, or hides it if it is in front.
+void MainWindow::toggleProblems(bool byFocus)
+{
+    const bool shown = m_problems && !m_terminal->isHidden() && m_terminal->currentPage() == m_problems;
+    if (shown && (!byFocus || m_problems->isAncestorOf(QApplication::focusWidget()))) {
+        setTerminalVisible(false);
+        return;
+    }
+    if (!m_problems) {
+        m_problems = new ProblemsPanel(
+            [this] {
+                return m_lsp ? m_lsp->problems() : QList<LspManager::Problem>();
+            },
+            [this] {
+                return m_root;
+            },
+            m_terminal);
+        m_problems->hide();
+        connect(m_lsp, &LspManager::problemsChanged, m_problems, &ProblemsPanel::refresh);
+        connect(m_problems, &ProblemsPanel::problemActivated, this, [this](const QString &path, int line, int column) {
+            openFile(path, line, column);
+        });
+    }
+    m_terminal->showPage(m_problems, ProblemsPanel::tabIcon(), tr("Problems"));
     setTerminalVisible(true);
 }
 
@@ -2095,7 +2132,7 @@ void MainWindow::onStatusClicked(const QString &name)
         return;
     }
     if (name == QLatin1String("problems")) {
-        m_lsp->statusClicked();
+        toggleProblems(false);
         return;
     }
     KTextEditor::View *view = currentView();
@@ -2528,7 +2565,7 @@ void MainWindow::saveSession()
     s.setValue(key + QStringLiteral("/sideVisible"), !m_side->isHidden());
     s.setValue(key + QStringLiteral("/sidePage"), m_side->currentIndex());
     s.setValue(key + QStringLiteral("/sideWidth"), m_sideWidth);
-    s.setValue(key + QStringLiteral("/terminalVisible"), !m_terminal->isHidden());
+    s.setValue(key + QStringLiteral("/terminalVisible"), !m_terminal->isHidden() && m_terminal->hasTerminals()); // not for Problems alone
     s.setValue(key + QStringLiteral("/terminalHeight"), m_terminalHeight);
     s.sync();
 }

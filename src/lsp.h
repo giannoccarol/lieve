@@ -42,6 +42,8 @@ class LspHints;
 // Icons for LSP completion item kinds and symbol kinds.
 QIcon completionKindIcon(int kind);
 QIcon symbolKindIcon(int kind);
+// The colour of a problem's underline: 1 error, 2 warning, 3 information.
+QColor diagnosticColor(int severity);
 
 // Language intelligence for one window, from language servers (LSP):
 // go to definition, problems, hover, completion and the symbols of a file.
@@ -70,7 +72,23 @@ public:
     void removeDocument(KTextEditor::Document *doc);
     void addView(KTextEditor::View *view);
     void setCurrentView(KTextEditor::View *view);
-    void statusClicked();
+
+    // The problems the servers reported for the open files (not the hints),
+    // at their place in the text now. For the Problems panel.
+    struct Problem {
+        QString path;
+        int line = 0; // 0-based
+        int column = 0;
+        int severity = 1; // 1 error, 2 warning, 3 information
+        QString message;
+        QString source;
+        QString code;
+    };
+    QList<Problem> problems() const;
+    QString root() const
+    {
+        return m_root;
+    }
 
     void goToDefinition(KTextEditor::View *view, KTextEditor::Cursor position);
     void navigate(int direction);
@@ -88,6 +106,11 @@ public:
 
     // Automated checks (LIEVE_TEST_LSP): steps separated by '|'.
     void runTest(const QString &script);
+
+Q_SIGNALS:
+    // problems() changed. Bursts come as one signal, and none at all while
+    // nothing is connected.
+    void problemsChanged();
 
 private:
     struct Diagnostic {
@@ -127,6 +150,7 @@ private:
     void releaseRevisions(DocState *s, int upToVersion);
     void setDiagnostics(DocState *s, const QJsonArray &diagnostics, int version);
     void clearDiagnostics(DocState *s);
+    void problemsTouched();
     void updateStatus();
     void updateIdle();
     void stopAll(bool wait = false);
@@ -153,6 +177,7 @@ private:
     QList<QPointer<KTextEditor::View>> m_views;
     QPointer<KTextEditor::View> m_current;
     QTimer m_syncTimer;
+    QTimer m_problemsTimer; // coalesces problemsChanged()
     LspCompletionModel *m_completion = nullptr;
     std::unique_ptr<LspHints> m_hints;
     QAction *m_definitionAction = nullptr; // in the editor's context menu

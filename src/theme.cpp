@@ -187,6 +187,7 @@ QPushButton#commandCenter:hover { background: @tileTop; color: @fg; }
 QLabel#sideTitle { color: @titleText; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
 #sideStack QTreeView, #sideStack QListView, #sideStack QTreeWidget, #sideStack QListWidget,
 #overlay QListWidget, #chooserFrame QListWidget { background: transparent; border: none; outline: 0; }
+QTreeWidget#problemsTree { background: transparent; border: none; outline: 0; }
 #sideStack QToolButton { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 3px; }
 #sideStack QToolButton:hover { background: @hover; }
 #sideStack QToolButton:checked { background: @accentSoft; border: 1px solid @accent; }

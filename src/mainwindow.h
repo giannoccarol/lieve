@@ -32,6 +32,7 @@ class LspManager;
 class Explorer;
 class GitGutter;
 class GitPanel;
+class ProblemsPanel;
 class ProjectList;
 class QAction;
 class QFrame;
@@ -98,6 +99,7 @@ private:
     void setSidebarVisible(bool visible);
     void toggleTerminalFocus();
     void newTerminal(const QString &dir = QString());
+    void toggleProblems(bool byFocus);
     void syncActivityBar();
 
     // Editors
@@ -202,6 +204,7 @@ private:
     QHash<KTextEditor::Document *, QPointer<GitGutter>> m_gutters; // git change marks of each open file
     QWidget *m_body = nullptr;
     TerminalPanel *m_terminal = nullptr;
+    ProblemsPanel *m_problems = nullptr; // a tab of the bottom panel, made when first shown
     QuickOpen *m_quickOpen = nullptr;
     Lieve::LspManager *m_lsp = nullptr; // language servers: definitions, problems, completion
     QFrame *m_switcher = nullptr;

@@ -8,6 +8,7 @@
 #include <QWidget>
 
 class KXMLGUIClient;
+class QIcon;
 class QKeyEvent;
 class QMenu;
 class TabView;
@@ -32,6 +33,13 @@ public:
     void newTerminal(const QString &dir = QString(), const QString &shell = QString());
     void focusCurrent();
     void closeAll();
+    // A page that is not a terminal (Problems), shown as the first tab and
+    // brought to the front. Its × only takes the tab away: the page is kept.
+    void showPage(QWidget *page, const QIcon &icon, const QString &title);
+    QWidget *currentPage() const;
+    bool isEmpty() const; // no tab at all
+    // From a page back to a terminal (a new one if there is none).
+    void selectTerminal();
     // For [terminal] shell=: the names of the installed shells ("fish") and
     // of the login shell, the one "auto" runs.
     static QStringList shellNames();
@@ -53,4 +61,5 @@ private:
     QString m_dir;
     QList<QKeySequence> m_reserved;
     QHash<QWidget *, QPointer<KParts::ReadOnlyPart>> m_parts;
+    QList<QPointer<QWidget>> m_pages; // see showPage()
 };

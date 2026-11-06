@@ -5,9 +5,11 @@
 #include "jumplist.h"
 #include "lsp.h"
 #include "mainwindow.h"
+#include "problemspanel.h"
 #include "quickopen.h"
 #include "searchpanel.h"
 #include "settings.h"
+#include "statusbar.h"
 #include "tabview.h"
 #include "settingsdialog.h"
 #include "theme.h"
@@ -46,6 +48,7 @@
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QShortcut>
 #include <QSpinBox>
 #include <QToolButton>
 #include <QTreeView>
@@ -218,6 +221,107 @@ void testGutter(MainWindow *window, const QString &edits)
     if (click > 0) {
         Q_EMIT gutter->clicked(click - 1);
     }
+}
+
+// LIEVE_TEST_PROBLEMS=step;step...: the Problems panel, one step every 400 ms
+// from LIEVE_TEST_PROBLEMS_AT ms (default 1000). "open:<file>" opens a file
+// (relative to the project), "wait:<ms>", "key:<keys>" runs the window
+// shortcut with those keys (key:Ctrl+Shift+M), "status" clicks the problems
+// item of the status bar, "rows" prints the panel's rows, "select:<n>" makes
+// the n-th visible row current, "hover:<n>" hovers it, "click:<n>" clicks it,
+// "enter" presses Enter on the current row, "closetab:<n>" clicks the × of
+// the n-th tab of the bottom panel, "where" prints the editor's file and
+// cursor and the bottom panel's tabs. Problems without a language server:
+// LIEVE_TEST_LSP=fake:<severity>:<line>:<column>:<message> (see LspManager::runTest()).
+void testProblems(MainWindow *window, const QStringList &steps)
+{
+    if (steps.isEmpty()) {
+        return;
+    }
+    const QString step = steps.first();
+    const QString arg = step.section(QLatin1Char(':'), 1);
+    int delay = 400;
+    qInfo().noquote() << "problems-test step" << step;
+    auto *panel = window->findChild<ProblemsPanel *>();
+    auto *tree = panel ? panel->findChild<QTreeWidget *>() : nullptr;
+    const auto row = [tree](int n) {
+        QModelIndex index = tree ? tree->model()->index(0, 0) : QModelIndex();
+        for (int i = 0; i < n && index.isValid(); ++i) {
+            index = tree->indexBelow(index);
+        }
+        return index;
+    };
+    if (step.startsWith(QLatin1String("open:"))) {
+        window->openFile(QDir(window->project()).absoluteFilePath(arg));
+    } else if (step.startsWith(QLatin1String("wait:"))) {
+        delay = arg.toInt();
+    } else if (step.startsWith(QLatin1String("key:"))) {
+        const auto actions = window->actions();
+        for (QAction *action : actions) {
+            if (action->shortcuts().contains(QKeySequence(arg))) {
+                action->trigger();
+            }
+        }
+    } else if (step == QLatin1String("status")) {
+        if (QToolButton *item = window->findChild<StatusBar *>()->item(QStringLiteral("problems"))) {
+            item->click();
+        }
+    } else if (step == QLatin1String("rows")) {
+        if (!panel || !tree) {
+            qInfo().noquote() << "problems-test no panel";
+        } else {
+            qInfo().noquote() << "problems-test shown" << panel->isVisible() << "empty-text" << panel->findChild<QLabel *>()->isVisible();
+            for (QModelIndex index = row(0); index.isValid(); index = tree->indexBelow(index)) {
+                const bool file = index.data(Lieve::KindRole).toInt() == Lieve::FileItem;
+                qInfo().noquote() << "problems-test row" << (file ? "file" : "  problem") << index.data().toString() << "|"
+                                  << (file ? index.data(Lieve::DirRole).toString() + QStringLiteral(" | ") + index.data(Lieve::CountRole).toString()
+                                           : index.data(Qt::UserRole + 100).toString());
+            }
+        }
+    } else if (step.startsWith(QLatin1String("select:")) && tree) {
+        tree->setFocus();
+        tree->setCurrentIndex(row(arg.toInt()));
+    } else if (step.startsWith(QLatin1String("hover:")) && tree) {
+        const QPointF pos = QRectF(tree->visualRect(row(arg.toInt()))).center();
+        QHoverEvent event(QEvent::HoverMove, pos, tree->viewport()->mapToGlobal(pos), QPointF(-1, -1));
+        QApplication::sendEvent(tree->viewport(), &event);
+    } else if (step.startsWith(QLatin1String("click:")) && tree) {
+        const QPoint pos = tree->visualRect(row(arg.toInt())).center();
+        for (const QEvent::Type type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
+            QMouseEvent event(type, pos, tree->viewport()->mapToGlobal(pos), Qt::LeftButton,
+                              type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(tree->viewport(), &event);
+        }
+    } else if (step == QLatin1String("enter") && tree) {
+        const auto shortcuts = tree->findChildren<QShortcut *>();
+        for (QShortcut *shortcut : shortcuts) {
+            if (shortcut->key() == QKeySequence(Qt::Key_Return)) {
+                Q_EMIT shortcut->activated();
+            }
+        }
+    } else if (step.startsWith(QLatin1String("closetab:"))) {
+        Q_EMIT window->findChild<TerminalPanel *>()->findChild<TabView *>()->tabCloseRequested(arg.toInt());
+    } else if (step == QLatin1String("where")) {
+        QWidget *focus = QApplication::focusWidget();
+        const auto editors = window->findChildren<KTextEditor::View *>();
+        for (KTextEditor::View *editor : editors) {
+            if (editor->isVisible()) { // the current tab of each editor group
+                qInfo().noquote() << "problems-test editor" << editor->document()->documentName() << editor->cursorPosition().line() + 1
+                                  << editor->cursorPosition().column() + 1;
+            }
+        }
+        auto *terminal = window->findChild<TerminalPanel *>();
+        auto *tabs = terminal->findChild<TabView *>();
+        QStringList titles;
+        for (int i = 0; i < tabs->count(); ++i) {
+            titles << (i == tabs->currentIndex() ? QStringLiteral("*") : QString()) + tabs->tabBar()->tabText(i);
+        }
+        qInfo().noquote() << "problems-test panel" << (terminal->isVisible() ? "shown" : "hidden") << titles.join(QStringLiteral(", ")) << "focus"
+                          << (focus ? focus->metaObject()->className() : "none") << (panel && panel->isAncestorOf(focus) ? "(problems)" : "");
+    }
+    QTimer::singleShot(delay, window, [window, steps] {
+        testProblems(window, steps.mid(1));
+    });
 }
 
 // LIEVE_TEST_HOTEXIT=step,step...: in every window "type" edits the current
@@ -606,6 +710,13 @@ void setupTestHooks(QApplication &app)
             if (auto *lsp = window->findChild<Lieve::LspManager *>()) {
                 lsp->runTest(lspTest);
             }
+        }
+        const QStringList problemsTest = qEnvironmentVariable("LIEVE_TEST_PROBLEMS").split(QLatin1Char(';'), Qt::SkipEmptyParts);
+        if (!problemsTest.isEmpty()) {
+            const int at = qEnvironmentVariableIntValue("LIEVE_TEST_PROBLEMS_AT");
+            QTimer::singleShot(at > 0 ? at : 1000, window, [window, problemsTest] {
+                testProblems(window, problemsTest);
+            });
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_KEYS")) {
             if (auto *view = window->findChild<KTextEditor::View *>()) {

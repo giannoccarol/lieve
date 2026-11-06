@@ -27,6 +27,7 @@
 #include <QJsonDocument>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QMetaMethod>
 #include <QMouseEvent>
 #include <QTextDocument>
 #include <QToolButton>
@@ -326,6 +327,11 @@ QIcon completionKindIcon(int kind)
     return symbolKindIcon(kind > 0 && kind < int(std::size(toSymbol)) ? toSymbol[kind] : 13);
 }
 
+QColor diagnosticColor(int severity)
+{
+    return severityColor(severity);
+}
+
 // ---------------------------------------------------------------------------
 
 LspManager::LspManager(MainWindow *window, StatusBar *status, QWidget *overlayParent)
@@ -336,6 +342,9 @@ LspManager::LspManager(MainWindow *window, StatusBar *status, QWidget *overlayPa
     m_syncTimer.setSingleShot(true);
     m_syncTimer.setInterval(250);
     connect(&m_syncTimer, &QTimer::timeout, this, &LspManager::flushAll);
+    m_problemsTimer.setSingleShot(true);
+    m_problemsTimer.setInterval(150);
+    connect(&m_problemsTimer, &QTimer::timeout, this, &LspManager::problemsChanged);
     m_completion = new LspCompletionModel(this);
     m_hints = std::make_unique<LspHints>(this);
 
@@ -981,7 +990,36 @@ void LspManager::applyEdits(KTextEditor::Document *doc, const QJsonArray &edits,
 
 void LspManager::clearDiagnostics(DocState *s)
 {
+    if (!s->diagnostics.empty()) {
+        problemsTouched();
+    }
     s->diagnostics.clear(); // deletes the moving ranges
+}
+
+void LspManager::problemsTouched()
+{
+    // A server sends the problems of each file on its own: one signal for the lot.
+    if (isSignalConnected(QMetaMethod::fromSignal(&LspManager::problemsChanged))) {
+        m_problemsTimer.start();
+    }
+}
+
+QList<LspManager::Problem> LspManager::problems() const
+{
+    QList<Problem> out;
+    for (const auto &[doc, s] : m_docs) {
+        if (s->path.isEmpty()) {
+            continue;
+        }
+        for (const Diagnostic &d : s->diagnostics) {
+            if (d.severity > 3) {
+                continue; // hints: faded or struck-out code, not problems
+            }
+            const KTextEditor::Cursor at = d.range->toRange().start();
+            out.append({s->path, at.line(), at.column(), d.severity, d.message, d.source, d.code});
+        }
+    }
+    return out;
 }
 
 void LspManager::setDiagnostics(DocState *s, const QJsonArray &diagnostics, int version)
@@ -1027,6 +1065,7 @@ void LspManager::setDiagnostics(DocState *s, const QJsonArray &diagnostics, int 
     if (version >= 0) {
         releaseRevisions(s, version);
     }
+    problemsTouched();
     updateStatus();
 }
 
@@ -1105,29 +1144,6 @@ void LspManager::nextProblem(KTextEditor::View *view, bool forward)
     });
 }
 
-void LspManager::statusClicked()
-{
-    if (m_current) {
-        if (DocState *s = state(m_current->document()); s && !s->diagnostics.empty()) {
-            nextProblem(m_current, true);
-            return;
-        }
-    }
-    // Problems are in another open file: go there.
-    for (const auto &[doc, s] : m_docs) {
-        const bool has = std::any_of(s->diagnostics.begin(), s->diagnostics.end(), [](const Diagnostic &d) {
-            return d.severity <= 2;
-        });
-        if (has) {
-            if (KTextEditor::View *view = m_window->openFile(s->path)) {
-                view->setCursorPosition(KTextEditor::Cursor(0, 0));
-                nextProblem(view, true);
-            }
-            return;
-        }
-    }
-}
-
 void LspManager::updateStatus()
 {
     int errors = 0;
@@ -1173,7 +1189,7 @@ void LspManager::updateStatus()
     const QString warningText = warnings == 1 ? tr("1 warning") : tr("%1 warnings").arg(warnings);
     QStringList tip{tr("Problems in the open files: %1, %2").arg(errorText, warningText)};
     tip << servers;
-    tip << tr("Click or F8: next problem");
+    tip << tr("Click: Problems panel (Ctrl+Shift+M), F8: next problem");
     m_status->setItem(QStringLiteral("problems"),
                       QStringLiteral("%1⊗ %2  ⚠ %3").arg(busy ? QStringLiteral("⟳ ") : QString()).arg(errors).arg(warnings),
                       QIcon(),
@@ -1669,6 +1685,29 @@ void LspManager::runTest(const QString &script)
                     qInfo().noquote() << "lsp-test problem" << d.severity << r.start().line() + 1 << r.start().column() + 1 << r.end().column() + 1
                                       << d.message.section(QLatin1Char('\n'), 0, 0);
                 }
+            }
+            next(0);
+        } else if (name == QLatin1String("fake")) {
+            // fake:<severity>:<line>:<column>:<message> adds a problem to the
+            // current file, as a server would (the Problems panel without a server).
+            if (DocState *s = state(view->document())) {
+                const auto range = [](KTextEditor::Range r) {
+                    return QJsonObject{{QStringLiteral("start"), lspPosition(r.start())}, {QStringLiteral("end"), lspPosition(r.end())}};
+                };
+                QJsonArray list;
+                for (const Diagnostic &d : s->diagnostics) {
+                    list.append(QJsonObject{{QStringLiteral("range"), range(d.range->toRange())},
+                                            {QStringLiteral("severity"), d.severity},
+                                            {QStringLiteral("message"), d.message},
+                                            {QStringLiteral("source"), d.source},
+                                            {QStringLiteral("code"), d.code}});
+                }
+                const KTextEditor::Cursor c = at(2);
+                list.append(QJsonObject{{QStringLiteral("range"), range(KTextEditor::Range(c, KTextEditor::Cursor(c.line(), c.column() + 1)))},
+                                        {QStringLiteral("severity"), parts.value(1).toInt()},
+                                        {QStringLiteral("message"), parts.mid(4).join(QLatin1Char(':'))},
+                                        {QStringLiteral("source"), QStringLiteral("test")}});
+                setDiagnostics(s, list, -1);
             }
             next(0);
         } else if (name == QLatin1String("definition")) {

@@ -173,11 +173,50 @@ void TerminalPanel::closeAll()
             delete part.data(); // ends the shell, removes its tab
         }
     }
-    while (m_tabs->count() > 0) { // error tabs, if any
+    while (m_tabs->count() > 0) { // error tabs and pages, if any
         QWidget *w = m_tabs->widget(0);
         m_tabs->removeTab(0);
-        delete w;
+        if (!m_pages.contains(w)) {
+            delete w;
+        }
     }
+}
+
+void TerminalPanel::showPage(QWidget *page, const QIcon &icon, const QString &title)
+{
+    if (!m_pages.contains(page)) {
+        m_pages.append(page);
+    }
+    if (m_tabs->indexOf(page) < 0) {
+        m_tabs->insertTab(0, page, title);
+        m_tabs->setTabIcon(0, icon);
+    }
+    m_tabs->setCurrentWidget(page);
+}
+
+QWidget *TerminalPanel::currentPage() const
+{
+    return m_tabs->currentWidget();
+}
+
+bool TerminalPanel::isEmpty() const
+{
+    return m_tabs->count() == 0;
+}
+
+void TerminalPanel::selectTerminal()
+{
+    QWidget *current = m_tabs->currentWidget();
+    if (!current || !m_pages.contains(current)) {
+        return; // already a terminal, or nothing yet (the caller opens one)
+    }
+    for (int i = m_tabs->count() - 1; i >= 0; --i) {
+        if (!m_pages.contains(m_tabs->widget(i))) {
+            m_tabs->setCurrentIndex(i);
+            return;
+        }
+    }
+    newTerminal();
 }
 
 void TerminalPanel::setWorkingDirectory(const QString &dir)
@@ -192,7 +231,12 @@ void TerminalPanel::setReservedShortcuts(const QList<QKeySequence> &keys)
 
 bool TerminalPanel::hasTerminals() const
 {
-    return m_tabs->count() > 0;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (!m_pages.contains(m_tabs->widget(i))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void TerminalPanel::fillShellMenu(QMenu *menu)
@@ -306,7 +350,9 @@ void TerminalPanel::closeTerminal(int index)
         delete part; // also deletes its widget and ends the shell
     } else {
         m_tabs->removeTab(index);
-        widget->deleteLater();
+        if (!m_pages.contains(widget)) {
+            widget->deleteLater();
+        }
         if (m_tabs->count() == 0) {
             Q_EMIT lastTerminalClosed();
         }
