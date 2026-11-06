@@ -1,5 +1,6 @@
 #include "explorer.h"
 
+#include "npmscripts.h"
 #include "roundedrows.h"
 #include "settings.h"
 #include "vscodeicons.h"
@@ -189,6 +190,7 @@ Explorer::Explorer(QWidget *parent)
 
     m_stack = new QStackedWidget(this);
     layout->addWidget(m_stack, 1);
+    m_npm = new NpmScripts(this, m_stack); // its section is made only for projects with scripts
 
     // Page 0: no folder open
     auto *empty = new QWidget(m_stack);
@@ -274,6 +276,7 @@ void Explorer::setRoot(const QString &dir)
     m_root = dir;
     m_pendingReveal.clear();
     m_proxy->clearExpanded();
+    m_npm->setRoot(dir);
     if (dir.isEmpty()) {
         m_title->setText(tr("EXPLORER"));
         m_stack->setCurrentIndex(0);

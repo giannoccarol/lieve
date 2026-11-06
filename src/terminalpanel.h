@@ -30,6 +30,11 @@ public:
     bool hasTerminals() const;
     // `shell` is a path; empty = the default shell ([terminal] shell=).
     void newTerminal(const QString &dir = QString(), const QString &shell = QString());
+    // Types `command` into the shell of a new terminal in `dir`, titled
+    // `title`; the shell stays open afterwards (↑ Enter runs it again).
+    // `reuse`, a terminal it returned before, runs it again if its shell is
+    // idle. Returns the terminal (null if Konsole is missing).
+    QWidget *runCommand(const QString &dir, const QString &title, const QString &command, QWidget *reuse = nullptr);
     void focusCurrent();
     void closeAll();
     // For [terminal] shell=: the names of the installed shells ("fish") and

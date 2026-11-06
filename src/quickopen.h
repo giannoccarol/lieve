@@ -28,6 +28,9 @@ public:
     void setRoot(const QString &dir);
     // Opens with `text` already typed: "" files, ">" commands, ":" go to line.
     void popup(const QStringList &recentFiles, const QString &text = QString());
+    // Opens on a list to pick from (like a command's second list): the
+    // chosen one's action runs. `placeholder` is shown in the empty box.
+    void popupChoices(const QList<Lieve::CommandChoice> &choices, const QString &placeholder);
     // The commands listed after ">", gathered each time that list opens.
     void setCommandSource(const std::function<QList<Lieve::Command>()> &source);
     // The editor that ":" moves in.

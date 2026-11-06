@@ -5,6 +5,7 @@
 #include "jumplist.h"
 #include "lsp.h"
 #include "mainwindow.h"
+#include "npmscripts.h"
 #include "quickopen.h"
 #include "searchpanel.h"
 #include "settings.h"
@@ -605,6 +606,12 @@ void setupTestHooks(QApplication &app)
         if (!lspTest.isEmpty()) {
             if (auto *lsp = window->findChild<Lieve::LspManager *>()) {
                 lsp->runTest(lspTest);
+            }
+        }
+        const QString npmTest = qEnvironmentVariable("LIEVE_TEST_NPM"); // steps, see NpmScripts::runTest()
+        if (!npmTest.isEmpty()) {
+            if (auto *npm = window->findChild<NpmScripts *>()) {
+                npm->runTest(npmTest);
             }
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_KEYS")) {

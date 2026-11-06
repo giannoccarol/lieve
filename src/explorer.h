@@ -5,6 +5,7 @@
 #include <QSortFilterProxyModel>
 #include <QWidget>
 
+class NpmScripts;
 class QFileSystemModel;
 class QLabel;
 class QStackedWidget;
@@ -41,6 +42,11 @@ public:
     void setBranch(const QString &branch);
     void reveal(const QString &path);
     void focusTree();
+    // The NPM SCRIPTS section below the tree.
+    NpmScripts *npmScripts() const
+    {
+        return m_npm;
+    }
 
 protected:
     void enterEvent(QEnterEvent *event) override;
@@ -73,4 +79,5 @@ private:
     QLabel *m_branch = nullptr;
     QString m_root;
     QString m_pendingReveal;
+    NpmScripts *m_npm = nullptr;
 };
