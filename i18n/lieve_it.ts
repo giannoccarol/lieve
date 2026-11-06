@@ -107,34 +107,44 @@
         <source>Bookmarks</source>
         <translation>Segnalibri</translation>
     </message>
+    <message>
+        <location filename="../src/mergeconflicts.cpp" line="+30"/>
+        <source>Merge Conflict</source>
+        <translation>Conflitto di merge</translation>
+    </message>
+    <message>
+        <location filename="../src/npmscripts.h" line="+27"/>
+        <source>Tasks</source>
+        <translation>Attività</translation>
+    </message>
 </context>
 <context>
     <name>Explorer</name>
     <message>
-        <location filename="../src/explorer.cpp" line="+141"/>
-        <location line="+134"/>
+        <location filename="../src/explorer.cpp" line="+145"/>
+        <location line="+136"/>
         <source>EXPLORER</source>
         <translation>ESPLORA RISORSE</translation>
     </message>
     <message>
-        <location line="-106"/>
-        <location line="+217"/>
+        <location line="-108"/>
+        <location line="+219"/>
         <source>New File…</source>
         <translation>Nuovo file…</translation>
     </message>
     <message>
-        <location line="-216"/>
-        <location line="+219"/>
+        <location line="-218"/>
+        <location line="+221"/>
         <source>New Folder…</source>
         <translation>Nuova cartella…</translation>
     </message>
     <message>
-        <location line="-218"/>
+        <location line="-220"/>
         <source>Collapse All</source>
         <translation>Comprimi tutto</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+24"/>
         <source>No folder open.</source>
         <translation>Nessuna cartella aperta.</translation>
     </message>
@@ -144,7 +154,7 @@
         <translation>Apri cartella…</translation>
     </message>
     <message>
-        <location line="+199"/>
+        <location line="+200"/>
         <source>Rename…</source>
         <translation>Rinomina</translation>
     </message>
@@ -218,7 +228,7 @@
 <context>
     <name>GitPanel</name>
     <message>
-        <location filename="../src/gitpanel.cpp" line="+72"/>
+        <location filename="../src/gitpanel.cpp" line="+82"/>
         <source>Added</source>
         <translation>Aggiunto</translation>
     </message>
@@ -259,12 +269,12 @@
     </message>
     <message>
         <location line="+56"/>
-        <location line="+714"/>
+        <location line="+796"/>
         <source>Open File</source>
         <translation>Apri il file</translation>
     </message>
     <message>
-        <location line="-712"/>
+        <location line="-794"/>
         <source>Discard All Changes</source>
         <translation>Annulla tutte le modifiche</translation>
     </message>
@@ -285,12 +295,12 @@
     </message>
     <message>
         <location line="+2"/>
-        <location line="+307"/>
+        <location line="+308"/>
         <source>Unstage All Changes</source>
         <translation>Rimuovi tutte dalla preparazione</translation>
     </message>
     <message>
-        <location line="-306"/>
+        <location line="-307"/>
         <source>Unstage Changes</source>
         <translation>Rimuovi dalla preparazione</translation>
     </message>
@@ -321,13 +331,13 @@
     </message>
     <message>
         <location line="+8"/>
-        <location line="+255"/>
+        <location line="+337"/>
         <location line="+39"/>
         <source>Commit</source>
         <translation>Commit</translation>
     </message>
     <message>
-        <location line="-291"/>
+        <location line="-373"/>
         <source>Commit (Amend)</source>
         <translation>Commit (modifica l&apos;ultimo)</translation>
     </message>
@@ -362,13 +372,64 @@
         <translation>Recupera (fetch)</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+3"/>
+        <source>Checkout to…</source>
+        <translation>Passa al branch…</translation>
+    </message>
+    <message>
+        <location line="+2"/>
         <source>Stage All Changes</source>
         <comment>overflow menu</comment>
         <translation>Prepara tutte le modifiche</translation>
     </message>
     <message>
         <location line="+13"/>
+        <source>Stash</source>
+        <comment>submenu</comment>
+        <translation>Stash</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Stash</source>
+        <translation>Stash</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Stash (Include Untracked)</source>
+        <translation>Stash (inclusi i file non tracciati)</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Pop Latest Stash</source>
+        <translation>Ripristina l&apos;ultimo stash</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Apply Stash…</source>
+        <translation>Applica uno stash…</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Pop Stash…</source>
+        <translation>Ripristina uno stash…</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Drop Stash…</source>
+        <translation>Elimina uno stash…</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>View History</source>
+        <translation>Mostra la cronologia</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>View File History</source>
+        <translation>Mostra la cronologia del file</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <location line="+3"/>
         <source>Undo Last Commit</source>
         <translation>Annulla l&apos;ultimo commit</translation>
@@ -381,7 +442,7 @@ The changes stay staged and the message goes back into the message box.</source>
 Le modifiche restano preparate e il messaggio torna nella casella.</translation>
     </message>
     <message>
-        <location line="+101"/>
+        <location line="+146"/>
         <source>git is not installed.</source>
         <translation>git non è installato.</translation>
     </message>
@@ -520,6 +581,161 @@ Le modifiche agli altri file andranno perse.</translation>
     </message>
 </context>
 <context>
+    <name>GitPicker</name>
+    <message>
+        <location filename="../src/gitpicker.cpp" line="+109"/>
+        <source>Select a branch to check out</source>
+        <translation>Scegli il branch a cui passare</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>+ Create new branch…</source>
+        <translation>+ Crea un nuovo branch…</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>+ Create new branch from…</source>
+        <translation>+ Crea un nuovo branch da…</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Select a branch to create “%1” from</source>
+        <translation>Scegli il branch da cui creare «%1»</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>There are no branches yet.</source>
+        <translation>Non ci sono ancora branch.</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>Stash message</source>
+        <translation>Messaggio dello stash</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Optionally provide a stash message (Press &apos;Enter&apos; to confirm or &apos;Escape&apos; to cancel)</source>
+        <translation>Messaggio facoltativo per lo stash (Invio per confermare, Esc per annullare)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Pick a stash to apply</source>
+        <translation>Scegli lo stash da applicare</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Pick a stash to pop</source>
+        <translation>Scegli lo stash da ripristinare</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Pick a stash to drop</source>
+        <translation>Scegli lo stash da eliminare</translation>
+    </message>
+    <message>
+        <location line="+20"/>
+        <location line="+4"/>
+        <source>Drop Stash</source>
+        <comment>confirmation dialog</comment>
+        <translation>Elimina stash</translation>
+    </message>
+    <message>
+        <location line="-3"/>
+        <source>Drop the stash “%1”?
+Its changes will be lost.</source>
+        <translation>Eliminare lo stash «%1»?
+Le sue modifiche andranno perse.</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>There are no stashes in the repository.</source>
+        <translation>Nel repository non ci sono stash.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Select a commit to see its changes</source>
+        <translation>Scegli un commit per vederne le modifiche</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Select a commit</source>
+        <translation>Scegli un commit</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Open a file of the repository to see its history.</source>
+        <translation>Apri un file del repository per vederne la cronologia.</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>This file is not in the repository.</source>
+        <translation>Questo file non è nel repository.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Select a commit to see its changes to %1</source>
+        <translation>Scegli un commit per vederne le modifiche a %1</translation>
+    </message>
+    <message>
+        <location line="+25"/>
+        <source>There are no commits yet.</source>
+        <translation>Non ci sono ancora commit.</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>%1 has no commits yet.</source>
+        <translation>%1 non ha ancora commit.</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Branch name</source>
+        <translation>Nome del branch</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <location line="+15"/>
+        <source>Please provide a new branch name (Press &apos;Enter&apos; to confirm or &apos;Escape&apos; to cancel)</source>
+        <translation>Scrivi il nome del nuovo branch (Invio per confermare, Esc per annullare)</translation>
+    </message>
+    <message>
+        <location line="-12"/>
+        <source>“%1” is not a valid branch name</source>
+        <translation>«%1» non è un nome di branch valido</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>A branch named “%1” already exists</source>
+        <translation>Esiste già un branch «%1»</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>The new branch will be “%1” (Press &apos;Enter&apos; to confirm or &apos;Escape&apos; to cancel)</source>
+        <translation>Il nuovo branch sarà «%1» (Invio per confermare, Esc per annullare)</translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>current</source>
+        <comment>the branch checked out</comment>
+        <translation>attuale</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>remote branches</source>
+        <translation>branch remoti</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>%1 (%2)</source>
+        <comment>file name or commit subject, then the short commit hash</comment>
+        <translation>%1 (%2)</translation>
+    </message>
+    <message>
+        <location line="+129"/>
+        <source>No matching results</source>
+        <translation>Nessun risultato corrispondente</translation>
+    </message>
+</context>
+<context>
     <name>JumpList</name>
     <message>
         <location filename="../src/jumplist.cpp" line="+21"/>
@@ -550,7 +766,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>git non ha dato altre informazioni.</translation>
     </message>
     <message>
-        <location line="+328"/>
+        <location line="+472"/>
         <source>Couldn&apos;t stage the files</source>
         <translation>Impossibile preparare i file</translation>
     </message>
@@ -624,11 +840,62 @@ Le modifiche agli altri file andranno perse.</translation>
         <source>Couldn&apos;t initialize the repository</source>
         <translation>Impossibile inizializzare il repository</translation>
     </message>
+    <message>
+        <location line="+89"/>
+        <location line="+8"/>
+        <source>Couldn&apos;t check out “%1”</source>
+        <translation>Impossibile passare a «%1»</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Couldn&apos;t create the branch “%1”</source>
+        <translation>Impossibile creare il branch «%1»</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>Stash</source>
+        <translation>Stash</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>There are no changes to stash.</source>
+        <translation>Non ci sono modifiche da mettere nello stash.</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Couldn&apos;t stash the changes</source>
+        <translation>Impossibile mettere le modifiche nello stash</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>Pop Latest Stash</source>
+        <translation>Ripristina l&apos;ultimo stash</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>There are no stashes in the repository.</source>
+        <translation>Nel repository non ci sono stash.</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Couldn&apos;t pop the stash</source>
+        <translation>Impossibile ripristinare lo stash</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Couldn&apos;t apply the stash</source>
+        <translation>Impossibile applicare lo stash</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Couldn&apos;t drop the stash</source>
+        <translation>Impossibile eliminare lo stash</translation>
+    </message>
 </context>
 <context>
     <name>Lieve::LspManager</name>
     <message>
-        <location filename="../src/lsp.cpp" line="+368"/>
+        <location filename="../src/lsp.cpp" line="+377"/>
         <location line="+39"/>
         <source>Go to Definition</source>
         <translation>Vai alla definizione</translation>
@@ -659,7 +926,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Problema precedente</translation>
     </message>
     <message>
-        <location line="+717"/>
+        <location line="+724"/>
         <source>%1 language server: running</source>
         <translation>Server di linguaggio %1: attivo</translation>
     </message>
@@ -700,8 +967,8 @@ Le modifiche agli altri file andranno perse.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <source>Click or F8: next problem</source>
-        <translation>Clic o F8: problema successivo</translation>
+        <source>Click: Problems panel (Ctrl+Shift+M), F8: next problem</source>
+        <translation>Clic: pannello Problemi (Ctrl+Shift+M), F8: problema successivo</translation>
     </message>
     <message>
         <location line="+196"/>
@@ -775,7 +1042,7 @@ Le modifiche agli altri file andranno perse.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/mainwindow.cpp" line="+391"/>
+        <location filename="../src/mainwindow.cpp" line="+395"/>
         <source>Explorer (Ctrl+Shift+E)</source>
         <translation>Esplora risorse (Ctrl+Shift+E)</translation>
     </message>
@@ -786,12 +1053,12 @@ Le modifiche agli altri file andranno perse.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+1773"/>
+        <location line="+1872"/>
         <source>Source Control (Ctrl+Shift+G)</source>
         <translation>Controllo del codice sorgente (Ctrl+Shift+G)</translation>
     </message>
     <message>
-        <location line="-1771"/>
+        <location line="-1870"/>
         <source>Side Bar (Ctrl+B)</source>
         <translation>Barra laterale (Ctrl+B)</translation>
     </message>
@@ -801,19 +1068,19 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Terminale (Ctrl+J)</translation>
     </message>
     <message>
-        <location line="+210"/>
-        <location line="+1158"/>
+        <location line="+224"/>
+        <location line="+1228"/>
         <source>Choose a project</source>
         <translation>Scegli un progetto</translation>
     </message>
     <message>
-        <location line="-1139"/>
-        <location line="+206"/>
+        <location line="-1209"/>
+        <location line="+209"/>
         <source>Open Folder…</source>
         <translation>Apri cartella…</translation>
     </message>
     <message>
-        <location line="-197"/>
+        <location line="-200"/>
         <source>Enter to open · Ctrl+Enter to open in a new window · projects are searched in %1 (Ctrl+, to change)</source>
         <translation>Invio apre · Ctrl+Invio in una nuova finestra · progetti cercati in %1 (Ctrl+, per cambiare)</translation>
     </message>
@@ -846,12 +1113,12 @@ Le modifiche agli altri file andranno perse.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+225"/>
+        <location line="+226"/>
         <source>Settings</source>
         <translation>Impostazioni</translation>
     </message>
     <message>
-        <location line="-188"/>
+        <location line="-189"/>
         <source>Search projects… (Enter: open · Ctrl+Enter: replace in this window)</source>
         <translation>Cerca progetto… (Invio: apri · Ctrl+Invio: sostituisci in questa finestra)</translation>
     </message>
@@ -889,6 +1156,11 @@ Le modifiche agli altri file andranno perse.</translation>
         <location line="+3"/>
         <source>Toggle Panel</source>
         <translation>Mostra/nascondi pannello</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Show Problems</source>
+        <translation>Mostra i problemi</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -931,7 +1203,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Chiudi scheda</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="+3"/>
         <source>Next Editor</source>
         <translation>Scheda successiva</translation>
     </message>
@@ -996,12 +1268,43 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Esci</translation>
     </message>
     <message>
-        <location line="+721"/>
+        <location line="+4"/>
+        <source>Run npm Script…</source>
+        <translation>Esegui uno script npm…</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Select the npm script to run</source>
+        <translation>Scegli lo script npm da eseguire</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Rerun Last Script</source>
+        <translation>Riesegui l&apos;ultimo script</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>Open Preview</source>
+        <translation>Apri l&apos;anteprima</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <location line="+935"/>
+        <source>Open Preview to the Side</source>
+        <translation>Apri l&apos;anteprima a lato</translation>
+    </message>
+    <message>
+        <location line="-650"/>
+        <source>Problems</source>
+        <translation>Problemi</translation>
+    </message>
+    <message>
+        <location line="+474"/>
         <source>Open File</source>
         <translation>Apri file</translation>
     </message>
     <message>
-        <location line="+147"/>
+        <location line="+157"/>
         <source>Close</source>
         <translation>Chiudi</translation>
     </message>
@@ -1021,7 +1324,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Chiudi tutte</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="+12"/>
         <source>Copy Path</source>
         <translation>Copia percorso</translation>
     </message>
@@ -1036,17 +1339,27 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Mostra in Esplora risorse</translation>
     </message>
     <message>
+        <location line="+5"/>
+        <source>View File History</source>
+        <translation>Mostra la cronologia del file</translation>
+    </message>
+    <message>
         <location line="+54"/>
         <source>Detached HEAD</source>
         <translation>HEAD staccato</translation>
     </message>
     <message>
         <location line="+2"/>
-        <source>Branch %1 — click to open Source Control</source>
-        <translation>Branch %1 — clic: controllo del codice sorgente</translation>
+        <source>Branch %1 — click to check out another branch</source>
+        <translation>Branch %1 — clic: passa a un altro branch</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="+1012"/>
+        <source>Open Preview to the Side (Ctrl+K V)</source>
+        <translation>Apri l&apos;anteprima a lato (Ctrl+K V)</translation>
+    </message>
+    <message>
+        <location line="-1007"/>
         <source>Synchronize with %1 (pull and push)</source>
         <translation>Sincronizza con %1 (pull e push)</translation>
     </message>
@@ -1076,7 +1389,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Vai alla riga (Ctrl+G)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+18"/>
         <source>Spaces: %1</source>
         <translation>Spazi: %1</translation>
     </message>
@@ -1226,7 +1539,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Più tardi</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="+49"/>
         <source>Indent Using Spaces</source>
         <translation>Rientra con spazi</translation>
     </message>
@@ -1271,14 +1584,14 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>%1 (nuovo file)</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+9"/>
         <source>No text differences (binary file, or only the permissions changed).
 </source>
         <translation>Nessuna differenza di testo (file binario, oppure cambiano solo i permessi).
 </translation>
     </message>
     <message>
-        <location line="+155"/>
+        <location line="+156"/>
         <source>Prettier is not installed in this project (node_modules/prettier).</source>
         <translation>Prettier non è installato in questo progetto (node_modules/prettier).</translation>
     </message>
@@ -1298,7 +1611,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Nessuna formattazione: Prettier non supporta questo tipo di file.</translation>
     </message>
     <message>
-        <location line="+291"/>
+        <location line="+294"/>
         <source>The file has changed on disk since these unsaved changes were made: saving them overwrites the new version.</source>
         <translation>Il file è cambiato sul disco dopo queste modifiche non salvate: salvandole si sovrascrive la versione nuova.</translation>
     </message>
@@ -1306,6 +1619,86 @@ Le modifiche agli altri file andranno perse.</translation>
         <location line="+9"/>
         <source>%1 no longer exists: its unsaved changes are in this new document.</source>
         <translation>%1 non esiste più: le sue modifiche non salvate sono in questo nuovo documento.</translation>
+    </message>
+</context>
+<context>
+    <name>MarkdownPreview</name>
+    <message>
+        <location filename="../src/markdownpreview.cpp" line="+1209"/>
+        <source>Preview %1</source>
+        <translation>Anteprima %1</translation>
+    </message>
+</context>
+<context>
+    <name>MergeConflicts</name>
+    <message>
+        <location filename="../src/mergeconflicts.cpp" line="+78"/>
+        <source>(Current Change)</source>
+        <translation>(Modifica corrente)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>(Incoming Change)</source>
+        <translation>(Modifica in arrivo)</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Accept Current Change</source>
+        <translation>Accetta la modifica corrente</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Accept Incoming Change</source>
+        <translation>Accetta la modifica in arrivo</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Accept Both Changes</source>
+        <translation>Accetta entrambe</translation>
+    </message>
+    <message>
+        <location line="+406"/>
+        <source>Next Conflict</source>
+        <translation>Conflitto successivo</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Previous Conflict</source>
+        <translation>Conflitto precedente</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Accept All Current</source>
+        <translation>Accetta tutte le modifiche correnti</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Accept All Incoming</source>
+        <translation>Accetta tutte le modifiche in arrivo</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Accept All Both</source>
+        <translation>Accetta entrambe in tutti i conflitti</translation>
+    </message>
+</context>
+<context>
+    <name>NpmScripts</name>
+    <message>
+        <location filename="../src/npmscripts.cpp" line="+137"/>
+        <location line="+263"/>
+        <source>Run</source>
+        <translation>Esegui</translation>
+    </message>
+    <message>
+        <location line="-247"/>
+        <source>NPM SCRIPTS</source>
+        <translation>SCRIPT NPM</translation>
+    </message>
+    <message>
+        <location line="+251"/>
+        <source>Open package.json</source>
+        <translation>Apri package.json</translation>
     </message>
 </context>
 <context>
@@ -1340,6 +1733,19 @@ Le modifiche agli altri file andranno perse.</translation>
         <location line="+26"/>
         <source>ESLint didn&apos;t respond in time: its fixes were not applied.</source>
         <translation>ESLint non ha risposto in tempo: le sue correzioni non sono state applicate.</translation>
+    </message>
+</context>
+<context>
+    <name>ProblemsPanel</name>
+    <message>
+        <location filename="../src/problemspanel.cpp" line="+166"/>
+        <source>No problems have been detected in the workspace.</source>
+        <translation>Nessun problema rilevato nel progetto.</translation>
+    </message>
+    <message>
+        <location line="+115"/>
+        <source>[Ln %1, Col %2]</source>
+        <translation>[Riga %1, col. %2]</translation>
     </message>
 </context>
 <context>
@@ -1473,7 +1879,7 @@ Le modifiche agli altri file andranno perse.</translation>
         <translation>Cerca file per nome (aggiungi :riga per andare a una riga)</translation>
     </message>
     <message>
-        <location line="+230"/>
+        <location line="+249"/>
         <source>recently used</source>
         <comment>commands</comment>
         <translation>usati di recente</translation>
@@ -1523,7 +1929,7 @@ Le modifiche agli altri file andranno perse.</translation>
 <context>
     <name>SearchPanel</name>
     <message>
-        <location filename="../src/searchpanel.cpp" line="+300"/>
+        <location filename="../src/searchpanel.cpp" line="+301"/>
         <source>Dismiss</source>
         <translation>Ignora</translation>
     </message>
@@ -2526,7 +2932,7 @@ check=true
 <context>
     <name>TerminalPanel</name>
     <message>
-        <location filename="../src/terminalpanel.cpp" line="+128"/>
+        <location filename="../src/terminalpanel.cpp" line="+131"/>
         <source>New Terminal (Ctrl+Shift+`)</source>
         <translation>Nuovo terminale (Ctrl+Shift+`)</translation>
     </message>
@@ -2541,7 +2947,7 @@ check=true
         <translation>Nascondi pannello (Ctrl+J)</translation>
     </message>
     <message>
-        <location line="+62"/>
+        <location line="+106"/>
         <source>%1  (default)</source>
         <translation>%1  (predefinita)</translation>
     </message>
