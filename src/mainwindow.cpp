@@ -2411,6 +2411,16 @@ void MainWindow::openChanges(const Lieve::GitEntry &entry, int line, QWidget *re
     });
 }
 
+// A tab switch hands the focus that was on the old tab (e.g. the file, after
+// a click on a change mark) to the diff's first side, the read-only one: the
+// editable side gets it instead, as in VS Code.
+static void focusDiffSide(DiffView *diff)
+{
+    if (diff->isAncestorOf(QApplication::focusWidget())) {
+        diff->setFocus(); // its focus proxy: the right side
+    }
+}
+
 void MainWindow::openSideBySide(const Lieve::GitEntry &entry, int line, QWidget *replace)
 {
     const auto showOpen = [this, entry, line](QWidget *replaced) {
@@ -2418,6 +2428,7 @@ void MainWindow::openSideBySide(const Lieve::GitEntry &entry, int line, QWidget 
             if (diff->key() == DiffView::keyOf(entry)) { // open already: shown, at that change
                 setActiveGroup(groupOfPage(diff));
                 m_tabs->setCurrentWidget(diff);
+                focusDiffSide(diff);
                 if (line >= 0) {
                     diff->revealLine(line);
                 }
@@ -2482,6 +2493,7 @@ void MainWindow::openSideBySide(const Lieve::GitEntry &entry, int line, QWidget 
         m_tabs->insertTab(index, diff, QString());
         m_tabs->setTabIcon(index, VsCodeIcons::instance().fileIcon(QFileInfo(entry.path).fileName()));
         m_tabs->setCurrentWidget(diff);
+        focusDiffSide(diff);
         if (line >= 0) {
             diff->revealLine(line);
         }
