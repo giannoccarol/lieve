@@ -3,6 +3,19 @@
 Each version has its own section here: its text becomes the GitHub release notes and is what
 Lieve shows when it offers the update.
 
+## v0.1.4
+
+- Find All References (`Shift+F12`) in a popup grouped by file, and Rename Symbol (`F2`) across the project,
+  through the language server.
+- Reference counts at the end of the line of classes, functions, methods and properties, like Visual Studio's
+  CodeLens; click one to list the references (`[lsp] codeLens`).
+- Side-by-side diff for the files in the Git panel and the change marks: the file itself on the right
+  (editable), changed words highlighted, the changes linked in the middle with stage/revert buttons,
+  `Alt+F5`/`Shift+Alt+F5`, switch to inline (`[git] sideBySide`).
+- Stage, unstage or revert only the selected lines (`Ctrl+K Ctrl+Alt+S`, `Ctrl+K Ctrl+N`, `Ctrl+K Ctrl+R`),
+  also from the right-click menu of a change mark.
+- Diff tabs tint whole lines, up to the right edge.
+
 ## v0.1.3
 
 - Problems panel (`Ctrl+Shift+M`, or click the count in the status bar): a tab next to the terminals with the

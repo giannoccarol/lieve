@@ -170,6 +170,13 @@ When a language server is installed, Lieve uses it, like VS Code does through it
 - **Problems panel** (`Ctrl+Shift+M`, or click the count in the status bar): a tab next to the terminals that
   lists the problems of the open files, grouped by file, errors first; click one (or `Enter`) to jump to it.
 - **Hover** information, **completion** with auto-imports, **Go to Symbol in File** (`Ctrl+Shift+O`).
+- **Find All References** (`Shift+F12`): the places a symbol is used, grouped by file, in a popup under it;
+  `Enter` or a click goes there (`Alt+←` comes back).
+- **Rename Symbol** (`F2` in the editor): renames it in every file of the project. Open files change in the
+  editor (one undo step each, not saved); the others on disk, keeping their encoding and line endings.
+- **Reference counts**, like Visual Studio's CodeLens: "3 references" at the end of the line of classes,
+  functions, methods and properties; click it to list them. Only the lines on screen are counted, after you
+  stop scrolling or typing. `[lsp] codeLens=false` (or **View: Toggle Reference Counts**) turns them off.
 
 TypeScript and JavaScript use `typescript-language-server` with the project's own TypeScript:
 
@@ -247,8 +254,17 @@ plus `.prettierrc` (with its plugins), `.prettierignore` and `.editorconfig`.
   and VS Code's letters: M modified, A added, D deleted (struck through), R renamed, U untracked, ! conflict.
 - Hovering a file or a section shows its buttons: **+** stage, **−** unstage, **discard changes** (asks first;
   new files go to the trash), **open file**.
-- **Click** a file: its diff in a read-only tab, added lines in green and removed lines in red.
+- **Click** a file: its diff **side by side**, like VS Code: the committed (or staged) version on the left,
+  the file itself on the right, which you can edit as usual. Changed lines are tinted and the changed words
+  stand out; the strip in the middle links each change on both sides (as in Meld) and, under the mouse, has
+  its buttons: **stage** or **revert** the change (**unstage** in a staged diff). `Alt+F5` / `Shift+Alt+F5`
+  go to the next / previous change; the buttons at the top right open the file or switch to the inline view
+  (remembered as `[git] sideBySide`). Binary and very large files show the inline diff.
   **Double-click**: open the file.
+- **Stage, unstage or revert part of a file**: select some lines (or put the cursor on a change) and use
+  **Stage Selected Ranges** (`Ctrl+K Ctrl+Alt+S`), **Unstage Selected Ranges** (`Ctrl+K Ctrl+N`, in a staged
+  diff) or **Revert Selected Ranges** (`Ctrl+K Ctrl+R`), from the Command Palette or the right-click menu;
+  right-click a change mark next to the line numbers for **Stage Change** / **Revert Change**.
 - Message and **Commit** (`Ctrl+Enter`). The menu next to it has: amend last commit, commit and push,
   commit and sync. If nothing is staged and `git.enableSmartCommit` is on (as in your VS Code settings),
   the commit includes all changes; otherwise it asks.
@@ -343,6 +359,9 @@ carries the line `X-Lieve-JumpList=true`).
 | Next / previous change | `Alt+F3` / `Shift+Alt+F3` |
 | Go to definition / back | `F12` or `Ctrl+click` / `Alt+←` |
 | Go to symbol in file | `Ctrl+Shift+O` |
+| Find all references / rename symbol | `Shift+F12` / `F2` |
+| Next / previous change in a diff | `Alt+F5` / `Shift+Alt+F5` |
+| Stage / unstage / revert selected lines | `Ctrl+K` then `Ctrl+Alt+S` / `Ctrl+N` / `Ctrl+R` |
 | Next / previous problem | `F8` / `Shift+F8` |
 | Problems panel | `Ctrl+Shift+M` |
 | Markdown preview to the side / in place | `Ctrl+K` then `V` / `Ctrl+Shift+V` |
@@ -446,5 +465,9 @@ Lieve puts together components written by others; the credit for the heavy lifti
   NPM SCRIPTS view, the merge conflict actions and colours, the branch/stash/history pickers, the Markdown
   preview, the breadcrumbs and sticky scroll (which lines stay and what a click does) are modelled on
   [Visual Studio Code](https://github.com/microsoft/vscode)'s (Microsoft, MIT).
+- How a selection picks the lines to stage follows VS Code's `intersectDiffWithRange` (`extensions/git/src/staging.ts`,
+  Microsoft, MIT); the bands between the two sides of a diff come from the link map of
+  [Meld](https://meldmerge.org/) (Stephen Kennedy, Kai Willadsen and contributors, GPL). Reference counts
+  are modelled on Visual Studio's CodeLens (Microsoft).
 - The line numbers of the sticky lines are laid out like KTextEditor's own line number border
   (`KateIconBorder::paintBorder` in `kateviewhelpers.cpp`, KDE, LGPL).
