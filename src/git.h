@@ -9,6 +9,7 @@
 #include <QTimer>
 
 #include <functional>
+#include <optional>
 
 class QProcess;
 
@@ -54,6 +55,22 @@ struct GitCommit {
     QString path; // file history: the file's path in this commit (it may have been renamed since)
 };
 
+// A file as the index holds it, read to stage or unstage part of it.
+struct GitIndexFile {
+    bool inIndex = false;
+    QString mode; // "100644", "100755"; "" when not in the index
+    QByteArray data;
+    bool inHead = false;
+    QByteArray head; // the file in HEAD, when asked for
+};
+
+// What goes back into the index: the new content, or the file out of it.
+struct GitIndexWrite {
+    QByteArray data;
+    QString mode;
+    bool remove = false;
+};
+
 // The git commands that GitRepo reads lists with, and their parsers (public
 // for the tests).
 namespace GitParse
@@ -66,6 +83,16 @@ QStringList commitsArgs(const QString &path); // "" = the whole project
 QList<GitCommit> commits(const QByteArray &out);
 // Whether git takes `name` for a new branch (the rules of check-ref-format).
 bool validBranchName(const QString &name);
+// The index entry of one file (ls-files --stage): its mode and blob; false
+// when it is not in the index, `conflict` when it is there in several stages.
+QStringList indexEntryArgs(const QString &path);
+bool indexEntry(const QByteArray &out, QString *mode, QString *blob, bool *conflict);
+// New index content for a file: hash-object -w (the content on stdin, git's
+// filters for that path applied: end of line conversion...) gives the blob,
+// update-index puts it in the index; or the file leaves the index.
+QStringList hashObjectArgs(const QString &path);
+QStringList updateIndexArgs(const QString &mode, const QString &blob, const QString &path);
+QStringList removeFromIndexArgs(const QString &path);
 }
 
 // One git repository, driven through the git command line. Commands run one
@@ -152,6 +179,18 @@ public:
     void undoLastCommit();
     void init();
     void diff(const GitEntry &entry, const std::function<void(const QString &)> &done);
+    // A file's content as git stores it, in the queue: `spec` ":path" for the
+    // index, "HEAD:path"; found = false when there is none.
+    void readFile(const QString &spec, const std::function<void(bool found, const QByteArray &data)> &done);
+    // Part of a file staged or unstaged, like VS Code: reads the file's index
+    // entry and content (and its HEAD content at `headPath`, unless empty),
+    // lets `change` compute the new index content and writes it, in one run
+    // of the queue that nothing else interrupts. `change` returns nothing to
+    // leave the index as it is.
+    void rewriteIndex(const QString &path,
+                      const QString &headPath,
+                      const std::function<std::optional<GitIndexWrite>(const GitIndexFile &)> &change,
+                      const QString &failTitle);
 
     // Branches, stashes and history. The lists are read by their own git
     // process, beside the queue (a slow fetch doesn't hold up a picker).
@@ -187,6 +226,7 @@ private:
     };
 
     void enqueue(Job job);
+    void enqueueNext(Job job); // before the rest of the queue: the next step of a job
     void runNext();
     // A read-only git command in a process of its own; `done` is dropped
     // when the folder changes meanwhile.

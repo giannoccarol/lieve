@@ -1,6 +1,8 @@
 #include "linediff.h"
 
 #include <QHash>
+#include <QStringDecoder>
+#include <QStringEncoder>
 
 #include <algorithm>
 #include <utility>
@@ -203,5 +205,309 @@ QList<LineHunk> diffLines(const QList<size_t> &a, const QList<size_t> &b)
     Differ differ(a.constData(), b.constData());
     differ.diff(0, int(a.size()), 0, int(b.size()), 0);
     return std::move(differ.hunks);
+}
+
+namespace
+{
+const char kBom[] = "\xef\xbb\xbf";
+// Word diffs stop past this many words, spaces and signs on a side.
+constexpr int kMaxTokens = 4000;
+
+QStringEncoder encoderFor(const QByteArray &encoding)
+{
+    QStringEncoder encoder(encoding.isEmpty() ? "UTF-8" : encoding.constData());
+    return encoder.isValid() ? std::move(encoder) : QStringEncoder(QStringEncoder::Utf8);
+}
+
+QStringDecoder decoderFor(const QByteArray &encoding)
+{
+    QStringDecoder decoder(encoding.isEmpty() ? "UTF-8" : encoding.constData());
+    return decoder.isValid() ? std::move(decoder) : QStringDecoder(QStringDecoder::Utf8);
+}
+
+// Words (letters, digits, '_'), runs of spaces, and single other characters;
+// a line break between lines is a token of its own.
+struct Token {
+    int line;
+    int column;
+    int length; // 0: the line break
+    size_t hash;
+};
+
+void tokenize(const QStringList &lines, std::vector<Token> &tokens)
+{
+    for (int l = 0; l < lines.size(); ++l) {
+        if (l > 0) {
+            tokens.push_back({l - 1, int(lines.at(l - 1).size()), 0, qHash(QStringView(u"\n"))});
+        }
+        const QString &text = lines.at(l);
+        int i = 0;
+        while (i < text.size()) {
+            const QChar c = text.at(i);
+            int end = i + 1;
+            const auto word = [](QChar ch) {
+                return ch.isLetterOrNumber() || ch == QLatin1Char('_') || ch.isHighSurrogate() || ch.isLowSurrogate();
+            };
+            if (word(c)) {
+                while (end < text.size() && word(text.at(end))) {
+                    ++end;
+                }
+            } else if (c.isSpace()) {
+                while (end < text.size() && text.at(end).isSpace()) {
+                    ++end;
+                }
+            }
+            tokens.push_back({l, i, end - i, qHash(QStringView(text).mid(i, end - i))});
+            i = end;
+        }
+    }
+}
+
+void addSpans(const std::vector<Token> &tokens, int from, int count, QList<TextSpan> *spans)
+{
+    for (int k = from; k < from + count; ++k) {
+        const Token &t = tokens[size_t(k)];
+        if (t.length == 0) {
+            continue;
+        }
+        if (!spans->isEmpty() && spans->last().line == t.line && spans->last().column + spans->last().length == t.column) {
+            spans->last().length += t.length;
+        } else {
+            spans->append({t.line, t.column, t.length});
+        }
+    }
+}
+}
+
+DiffText DiffText::fromData(const QByteArray &data)
+{
+    DiffText text;
+    qsizetype start = 0;
+    if (data.startsWith(kBom)) {
+        text.prefix = data.left(3);
+        start = 3;
+    }
+    for (;;) {
+        const qsizetype end = data.indexOf('\n', start);
+        if (end < 0) {
+            text.lines.append(data.mid(start));
+            text.crlf.append(false);
+            break;
+        }
+        const bool cr = end > start && data.at(end - 1) == '\r';
+        text.lines.append(data.mid(start, end - start - (cr ? 1 : 0)));
+        text.crlf.append(cr);
+        start = end + 1;
+    }
+    return text;
+}
+
+DiffText DiffText::fromLines(const QStringList &lines, const QByteArray &encoding, bool crlf)
+{
+    DiffText text;
+    QStringEncoder encoder = encoderFor(encoding);
+    for (const QString &line : lines) {
+        text.lines.append(encoder.encode(line));
+        text.crlf.append(crlf);
+    }
+    if (text.lines.isEmpty()) {
+        text.lines.append(QByteArray());
+        text.crlf.append(false);
+    }
+    text.crlf.last() = false;
+    return text;
+}
+
+QByteArray DiffText::toData() const
+{
+    QByteArray data = prefix;
+    for (qsizetype i = 0; i < lines.size(); ++i) {
+        data += lines.at(i);
+        if (i + 1 < lines.size()) {
+            data += crlf.value(i) ? QByteArrayView("\r\n") : QByteArrayView("\n");
+        }
+    }
+    return data;
+}
+
+QString DiffText::toText(const QByteArray &encoding) const
+{
+    QStringDecoder decoder = decoderFor(encoding);
+    QStringList decoded;
+    decoded.reserve(lines.size());
+    for (const QByteArray &line : lines) {
+        decoded.append(decoder.decode(line));
+    }
+    return decoded.join(QLatin1Char('\n'));
+}
+
+QList<size_t> DiffText::hashes() const
+{
+    QList<size_t> result;
+    result.reserve(lines.size());
+    for (const QByteArray &line : lines) {
+        result.append(qHash(line));
+    }
+    return result;
+}
+
+bool DiffText::mostlyCrlf() const
+{
+    qsizetype crlfs = 0;
+    for (qsizetype i = 0; i + 1 < crlf.size(); ++i) {
+        crlfs += crlf.at(i) ? 1 : 0;
+    }
+    return crlfs * 2 > crlf.size() - 1;
+}
+
+QList<LineHunk> selectHunks(const QList<LineHunk> &hunks, const LineSelection &selection)
+{
+    if (selection.hunk) {
+        return hunks.contains(*selection.hunk) ? QList<LineHunk>{*selection.hunk} : QList<LineHunk>();
+    }
+    const bool modified = selection.side == DiffSide::Modified;
+    QList<LineHunk> chosen;
+    for (const LineHunk &h : hunks) {
+        const int start = modified ? h.bStart : h.aStart;
+        const int count = modified ? h.bCount : h.aCount;
+        if (count == 0) { // lines only on the other side, between start - 1 and start on this one
+            if (selection.first <= start && selection.last >= start - 1) {
+                chosen.append(h);
+            }
+            continue;
+        }
+        const int from = std::max(selection.first, start);
+        const int to = std::min(selection.last, start + count - 1);
+        if (from > to) {
+            continue;
+        }
+        if (selection.wholeChanges || (from == start && to == start + count - 1)) {
+            chosen.append(h);
+            continue;
+        }
+        int otherStart = modified ? h.aStart : h.bStart;
+        int otherCount = modified ? h.aCount : h.bCount;
+        if (otherCount == count) { // line by line
+            otherStart += from - start;
+            otherCount = to - from + 1;
+        }
+        chosen.append(modified ? LineHunk{otherStart, otherCount, from, to - from + 1} : LineHunk{from, to - from + 1, otherStart, otherCount});
+    }
+    return chosen;
+}
+
+QList<LineHunk> invertHunks(const QList<LineHunk> &hunks)
+{
+    QList<LineHunk> inverted;
+    inverted.reserve(hunks.size());
+    for (const LineHunk &h : hunks) {
+        inverted.append({h.bStart, h.bCount, h.aStart, h.aCount});
+    }
+    return inverted;
+}
+
+DiffText applyHunks(const DiffText &base, const DiffText &other, const QList<LineHunk> &changes)
+{
+    DiffText result;
+    result.prefix = base.prefix;
+    const auto take = [&result](const DiffText &from, int line) {
+        result.lines.append(from.lines.value(line));
+        result.crlf.append(from.crlf.value(line));
+    };
+    int line = 0;
+    for (const LineHunk &h : changes) {
+        for (; line < h.aStart && line < base.size(); ++line) {
+            take(base, line);
+        }
+        for (int j = h.bStart; j < h.bStart + h.bCount && j < other.size(); ++j) {
+            take(other, j);
+        }
+        line = std::max(line, h.aStart + h.aCount);
+    }
+    for (; line < base.size(); ++line) {
+        take(base, line);
+    }
+    if (result.lines.isEmpty()) { // an empty text is one empty line
+        result.lines.append(QByteArray());
+        result.crlf.append(false);
+    }
+    result.crlf.last() = false;
+    return result;
+}
+
+std::optional<QByteArray>
+stagedContent(const QByteArray &index, const QStringList &documentLines, const QByteArray &encoding, bool documentCrlf, const LineSelection &selection)
+{
+    const DiffText base = DiffText::fromData(index);
+    const DiffText work = DiffText::fromLines(documentLines, encoding, base.hasLineBreaks() ? base.mostlyCrlf() : documentCrlf);
+    const QList<LineHunk> chosen = selectHunks(diffLines(base.hashes(), work.hashes()), selection);
+    if (chosen.isEmpty()) {
+        return std::nullopt;
+    }
+    return applyHunks(base, work, chosen).toData();
+}
+
+std::optional<QByteArray> unstagedContent(const QByteArray &head, const QByteArray &index, const LineSelection &selection)
+{
+    const DiffText original = DiffText::fromData(head);
+    const DiffText staged = DiffText::fromData(index);
+    const QList<LineHunk> chosen = selectHunks(diffLines(original.hashes(), staged.hashes()), selection);
+    if (chosen.isEmpty()) {
+        return std::nullopt;
+    }
+    return applyHunks(staged, original, invertHunks(chosen)).toData();
+}
+
+std::optional<QString> revertedText(const QByteArray &index, const QStringList &documentLines, const QByteArray &encoding, const LineSelection &selection)
+{
+    const DiffText base = DiffText::fromData(index);
+    const DiffText work = DiffText::fromLines(documentLines, encoding, false);
+    const QList<LineHunk> chosen = selectHunks(diffLines(base.hashes(), work.hashes()), selection);
+    if (chosen.isEmpty()) {
+        return std::nullopt;
+    }
+    // The document's own lines stay as they are (not through the encoding).
+    QStringDecoder decoder = decoderFor(encoding);
+    QStringList lines;
+    int line = 0;
+    for (const LineHunk &h : chosen) {
+        for (; line < h.bStart && line < documentLines.size(); ++line) {
+            lines.append(documentLines.at(line));
+        }
+        for (int j = h.aStart; j < h.aStart + h.aCount && j < base.size(); ++j) {
+            lines.append(decoder.decode(base.lines.at(j)));
+        }
+        line = std::max(line, h.bStart + h.bCount);
+    }
+    for (; line < documentLines.size(); ++line) {
+        lines.append(documentLines.at(line));
+    }
+    return lines.join(QLatin1Char('\n'));
+}
+
+void diffWords(const QStringList &a, const QStringList &b, QList<TextSpan> *changedA, QList<TextSpan> *changedB)
+{
+    std::vector<Token> ta;
+    std::vector<Token> tb;
+    tokenize(a, ta);
+    tokenize(b, tb);
+    if (ta.size() > size_t(kMaxTokens) || tb.size() > size_t(kMaxTokens)) {
+        return;
+    }
+    QList<size_t> ha;
+    QList<size_t> hb;
+    ha.reserve(qsizetype(ta.size()));
+    hb.reserve(qsizetype(tb.size()));
+    for (const Token &t : ta) {
+        ha.append(t.hash);
+    }
+    for (const Token &t : tb) {
+        hb.append(t.hash);
+    }
+    const QList<LineHunk> hunks = diffLines(ha, hb);
+    for (const LineHunk &h : hunks) {
+        addSpans(ta, h.aStart, h.aCount, changedA);
+        addSpans(tb, h.bStart, h.bCount, changedB);
+    }
 }
 }

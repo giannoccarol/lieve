@@ -1,4 +1,5 @@
 #include "delegates.h"
+#include "diffview.h"
 #include "explorer.h"
 #include "gitgutter.h"
 #include "gitpanel.h"
@@ -844,6 +845,11 @@ void setupTestHooks(QApplication &app)
                     MergeConflicts::runTest(focused, conflictSteps);
                 }
             });
+        }
+        // Side-by-side diffs, staging part of a file: steps, see DiffView::runTest()
+        const QString diffTest = qEnvironmentVariable("LIEVE_TEST_DIFF");
+        if (!diffTest.isEmpty()) {
+            DiffView::runTest(window, diffTest);
         }
         const QString npmTest = qEnvironmentVariable("LIEVE_TEST_NPM"); // steps, see NpmScripts::runTest()
         if (!npmTest.isEmpty()) {

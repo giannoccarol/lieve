@@ -92,6 +92,8 @@ build/tests/git_test: build/git.o build/moc_git.o build/prettier.o build/setting
 build/tests/npmpackages_test: build/npmpackages.o
 build/tests/scopes_test: build/scopes.o
 build/tests/lspedits_test: build/lspedits.o
+build/tests/hunks_test: build/linediff.o
+build/tests/staging_test: build/linediff.o build/git.o build/moc_git.o build/prettier.o build/settings.o
 
 build/tests:
 	mkdir -p build/tests

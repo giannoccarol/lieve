@@ -7,6 +7,7 @@
 #include <KTextEditor/Document>
 #include <KTextEditor/View>
 
+#include <QContextMenuEvent>
 #include <QFontMetricsF>
 #include <QMouseEvent>
 #include <QPainter>
@@ -368,10 +369,27 @@ bool GitGutter::eventFilter(QObject *watched, QEvent *event)
     case QEvent::MouseButtonPress:
     case QEvent::MouseButtonDblClick: {
         const auto *mouse = static_cast<QMouseEvent *>(event);
+        if (mouse->button() == Qt::RightButton) {
+            const int line = lineAt(border, mouse->position().toPoint());
+            if (line < 0) {
+                return false;
+            }
+            const QPoint global = mouse->globalPosition().toPoint();
+            QTimer::singleShot(0, this, [this, line, global] { // not inside KTextEditor's event
+                Q_EMIT menuRequested(line, global);
+            });
+            m_menuPressed = true;
+            return true;
+        }
         m_pressedLine = mouse->button() == Qt::LeftButton ? lineAt(border, mouse->position().toPoint()) : -1;
         return m_pressedLine >= 0; // a click on a mark does not move the cursor
     }
+    case QEvent::ContextMenu:
+        return lineAt(border, static_cast<QContextMenuEvent *>(event)->pos()) >= 0; // our menu instead
     case QEvent::MouseButtonRelease: {
+        if (static_cast<QMouseEvent *>(event)->button() == Qt::RightButton && std::exchange(m_menuPressed, false)) {
+            return true;
+        }
         if (m_pressedLine < 0) {
             return false;
         }
