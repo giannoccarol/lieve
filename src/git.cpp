@@ -12,6 +12,7 @@
 #include <QStandardPaths>
 
 #include <algorithm>
+#include <memory>
 
 namespace Lieve
 {
@@ -208,6 +209,49 @@ bool validBranchName(const QString &name)
         return part.startsWith(QLatin1Char('.')) || part.endsWith(QLatin1String(".lock"));
     });
 }
+
+QStringList indexEntryArgs(const QString &path)
+{
+    // Literal: a name with * or ? in it is not a pattern.
+    return {QStringLiteral("--literal-pathspecs"), QStringLiteral("ls-files"), QStringLiteral("--stage"), QStringLiteral("-z"), QStringLiteral("--"), path};
+}
+
+bool indexEntry(const QByteArray &out, QString *mode, QString *blob, bool *conflict)
+{
+    // "<mode> <blob> <stage>\t<path>\0", one record per stage
+    *conflict = false;
+    bool found = false;
+    const QList<QByteArray> records = out.split('\0');
+    for (const QByteArray &record : records) {
+        const QList<QByteArray> fields = record.left(record.indexOf('\t')).split(' ');
+        if (record.isEmpty() || fields.size() != 3) {
+            continue;
+        }
+        if (fields.at(2) != "0" || found) {
+            *conflict = true;
+            return false;
+        }
+        *mode = QString::fromLatin1(fields.at(0));
+        *blob = QString::fromLatin1(fields.at(1));
+        found = true;
+    }
+    return found;
+}
+
+QStringList hashObjectArgs(const QString &path)
+{
+    return {QStringLiteral("hash-object"), QStringLiteral("-w"), QStringLiteral("--stdin"), QStringLiteral("--path=") + path};
+}
+
+QStringList updateIndexArgs(const QString &mode, const QString &blob, const QString &path)
+{
+    return {QStringLiteral("update-index"), QStringLiteral("--add"), QStringLiteral("--cacheinfo"), mode + QLatin1Char(',') + blob + QLatin1Char(',') + path};
+}
+
+QStringList removeFromIndexArgs(const QString &path)
+{
+    return {QStringLiteral("update-index"), QStringLiteral("--force-remove"), QStringLiteral("--"), path};
+}
 }
 
 GitRepo::GitRepo(QObject *parent)
@@ -333,6 +377,14 @@ void GitRepo::setBusy(bool busy)
 void GitRepo::enqueue(Job job)
 {
     m_queue.append(std::move(job));
+    if (!m_proc) {
+        runNext();
+    }
+}
+
+void GitRepo::enqueueNext(Job job)
+{
+    m_queue.prepend(std::move(job));
     if (!m_proc) {
         runNext();
     }
@@ -741,6 +793,104 @@ void GitRepo::diff(const GitEntry &entry, const std::function<void(const QString
         done(QString::fromUtf8(out));
     };
     enqueue(std::move(job));
+}
+
+void GitRepo::readFile(const QString &spec, const std::function<void(bool, const QByteArray &)> &done)
+{
+    Job job;
+    job.args = {QStringLiteral("cat-file"), QStringLiteral("blob"), spec};
+    job.busy = false;
+    job.done = [done](int code, const QByteArray &out, const QByteArray &) {
+        done(code == 0, code == 0 ? out : QByteArray());
+    };
+    enqueue(std::move(job));
+}
+
+void GitRepo::rewriteIndex(const QString &path,
+                           const QString &headPath,
+                           const std::function<std::optional<GitIndexWrite>(const GitIndexFile &)> &change,
+                           const QString &failTitle)
+{
+    if (m_root.isEmpty()) {
+        return;
+    }
+    // Each step queues the next one in front of everything else: the index
+    // cannot change (from Lieve) between reading it and writing it back.
+    auto file = std::make_shared<GitIndexFile>();
+    const auto write = [this, path, change, failTitle, file] {
+        const std::optional<GitIndexWrite> result = change(*file);
+        if (!result) {
+            return;
+        }
+        Job job;
+        job.title = failTitle;
+        if (result->remove) {
+            job.args = GitParse::removeFromIndexArgs(path);
+            enqueueNext(std::move(job));
+            return;
+        }
+        job.args = GitParse::hashObjectArgs(path);
+        job.input = result->data;
+        job.busy = false;
+        const QString mode = result->mode;
+        job.done = [this, path, mode, failTitle](int code, const QByteArray &out, const QByteArray &) {
+            const QString blob = QString::fromLatin1(out).trimmed();
+            if (code != 0 || blob.isEmpty()) {
+                return;
+            }
+            Job update;
+            update.args = GitParse::updateIndexArgs(mode, blob, path);
+            update.title = failTitle;
+            enqueueNext(std::move(update));
+        };
+        enqueueNext(std::move(job));
+    };
+    const auto readHead = [this, headPath, file, write] {
+        if (headPath.isEmpty()) {
+            write();
+            return;
+        }
+        Job job;
+        job.args = {QStringLiteral("cat-file"), QStringLiteral("blob"), QStringLiteral("HEAD:") + headPath};
+        job.busy = false;
+        job.done = [file, write](int code, const QByteArray &out, const QByteArray &) {
+            file->inHead = code == 0;
+            file->head = code == 0 ? out : QByteArray();
+            write();
+        };
+        enqueueNext(std::move(job));
+    };
+    Job entry;
+    entry.args = GitParse::indexEntryArgs(path);
+    entry.busy = false;
+    entry.done = [this, file, readHead, failTitle](int code, const QByteArray &out, const QByteArray &) {
+        if (code != 0) {
+            return;
+        }
+        QString blob;
+        bool conflict = false;
+        file->inIndex = GitParse::indexEntry(out, &file->mode, &blob, &conflict);
+        if (conflict) {
+            Q_EMIT failed(failTitle, tr("The file has merge conflicts: resolve them first."));
+            return;
+        }
+        if (!file->inIndex) {
+            readHead();
+            return;
+        }
+        Job read;
+        read.args = {QStringLiteral("cat-file"), QStringLiteral("blob"), blob};
+        read.busy = false;
+        read.title = failTitle;
+        read.done = [file, readHead](int c, const QByteArray &data, const QByteArray &) {
+            if (c == 0) {
+                file->data = data;
+                readHead();
+            }
+        };
+        enqueueNext(std::move(read));
+    };
+    enqueue(std::move(entry));
 }
 
 void GitRepo::query(const QStringList &args, const std::function<void(int, const QByteArray &)> &done)

@@ -3,10 +3,13 @@
 #include "backups.h"
 #include "blame.h"
 #include "commandpalette.h"
+#include "diffview.h"
 #include "explorer.h"
 #include "git.h"
 #include "gitgutter.h"
 #include "gitpanel.h"
+#include "gitstaging.h"
+#include "linetint.h"
 #include "lsp.h"
 #include "markdownpreview.h"
 #include "mergeconflicts.h"
@@ -429,6 +432,7 @@ void MainWindow::buildUi()
     m_explorer = new Explorer(m_side);
     m_search = new SearchPanel(m_side);
     m_git = new Lieve::GitRepo(this);
+    m_staging = new GitStaging(m_git, this);
     m_gitPanel = new GitPanel(m_git, m_side);
     m_side->addWidget(m_explorer);
     m_side->addWidget(m_search);
@@ -505,9 +509,7 @@ void MainWindow::buildUi()
         openFile(path);
     });
     connect(m_gitPanel, &GitPanel::diffRequested, this, [this](const Lieve::GitEntry &entry) {
-        m_git->diff(entry, [this, entry](const QString &text) {
-            showDiff(entry, text);
-        });
+        openChanges(entry, -1); // side by side, or the unified diff
     });
     connect(m_gitPanel, &GitPanel::commitDiffRequested, this, &MainWindow::showDiffTab);
     m_gitPanel->setFileSource([this] {
@@ -900,12 +902,30 @@ void MainWindow::buildActions()
     QAction *focusThird = addShortcut(tr("Focus Third Editor Group"), {QKeySequence(Qt::CTRL | Qt::Key_3)}, false, [this] {
         focusGroup(2);
     });
-    addShortcut(tr("Go to Next Change"), {QKeySequence(Qt::ALT | Qt::Key_F3)}, false, [this] {
+    // Alt+F5 too, VS Code's key in diffs.
+    addShortcut(tr("Go to Next Change"), {QKeySequence(Qt::ALT | Qt::Key_F3), QKeySequence(Qt::ALT | Qt::Key_F5)}, false, [this] {
         goToChange(true);
     });
-    addShortcut(tr("Go to Previous Change"), {QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_F3)}, false, [this] {
+    addShortcut(tr("Go to Previous Change"), {QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_F3), QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_F5)}, false, [this] {
         goToChange(false);
     });
+    // Part of a file's changes into or out of the index, with VS Code's keys.
+    const std::pair<GitStaging::Command, const char *> stagingCommands[] = {
+        {GitStaging::Stage, "Ctrl+K, Ctrl+Alt+S"},
+        {GitStaging::Unstage, "Ctrl+K, Ctrl+N"},
+        {GitStaging::Revert, "Ctrl+K, Ctrl+R"},
+    };
+    for (const auto &[command, keys] : stagingCommands) {
+        QAction *action = addShortcut(GitStaging::commandText(command), {QKeySequence(QLatin1String(keys))}, false, [this, command] {
+            runStagingCommand(command);
+        });
+        action->setIcon(GitStaging::commandIcon(command));
+        setCommandCategory(action, CommandCategory::Git);
+        action->setVisible(false); // in the palette only in a repository
+        connect(m_git, &Lieve::GitRepo::changed, action, [this, action] {
+            action->setVisible(m_git->isRepository());
+        });
+    }
     QAction *formatAction = addShortcut(tr("Format Document"),
                                         {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I), QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_F)},
                                         false,
@@ -1303,6 +1323,18 @@ TabView *MainWindow::createGroup()
         showTabMenu(pos);
     });
     addPreviewButton(group);
+    DiffView::createCorner(
+        group,
+        m_git,
+        [this](QWidget *page) {
+            toggleDiffView(page);
+        },
+        [this](QWidget *page) {
+            const auto *diff = qobject_cast<DiffView *>(page);
+            const auto *view = qobject_cast<KTextEditor::View *>(page);
+            const QString key = view ? view->document()->property("lieveDiffKey").toString() : QString();
+            openFile(diff ? diff->path() : m_git->absolutePath(key.section(QLatin1Char(':'), 1)));
+        });
     if (m_outline) {
         m_outline->addGroup(group);
     }
@@ -1434,11 +1466,14 @@ KTextEditor::View *MainWindow::openFile(const QString &path, int line, int colum
         view = addView(view->document()); // open in another group: a view of it here too, like VS Code
     }
     if (!view) {
-        KTextEditor::Document *doc = KTextEditor::Editor::instance()->createDocument(this);
-        doc->setConfigValue(QStringLiteral("auto-reload-on-external-changes"), true);
-        if (!doc->openUrl(QUrl::fromLocalFile(canonical))) {
-            delete doc;
-            return nullptr;
+        KTextEditor::Document *doc = takeDiffDocument(canonical); // a side-by-side diff may have it open already
+        if (!doc) {
+            doc = KTextEditor::Editor::instance()->createDocument(this);
+            doc->setConfigValue(QStringLiteral("auto-reload-on-external-changes"), true);
+            if (!doc->openUrl(QUrl::fromLocalFile(canonical))) {
+                delete doc;
+                return nullptr;
+            }
         }
         view = addView(doc);
     }
@@ -1466,10 +1501,12 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc, TabView *grou
     }
     KTextEditor::View *view = doc->createView(group);
     configureView(view);
+    m_staging->addView(view); // Stage / Revert Selected Ranges in its context menu
     connect(view, &KTextEditor::View::focusIn, this, [this, view] {
         setActiveGroup(groupOf(view));
     });
-    if (doc->views().size() > 1) { // already open in another group: the document is set up
+    // (not views().size(): a side-by-side diff may show a document before its first tab)
+    if (doc->property("lieveSetUp").toBool()) { // already open in another group: the document is set up
         if (GitGutter *gutter = m_gutters.value(doc)) {
             gutter->addView(view);
         }
@@ -1479,6 +1516,7 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc, TabView *grou
         updateEditorPage();
         return view;
     }
+    doc->setProperty("lieveSetUp", true);
     connect(doc, &KTextEditor::Document::modifiedChanged, this, [this] {
         updateTabTitles();
         updateWindowTitle();
@@ -1519,6 +1557,11 @@ KTextEditor::View *MainWindow::addView(KTextEditor::Document *doc, TabView *grou
             m_gutters.insert(doc, gutter);
             connect(gutter, &GitGutter::clicked, this, [this, doc](int line) {
                 showChange(doc, line);
+            });
+            connect(gutter, &GitGutter::menuRequested, this, [this, doc](int line, const QPoint &pos) {
+                m_staging->showChangeMenu(this, doc, line, pos, [this, doc, line] {
+                    showChange(doc, line);
+                });
             });
             connect(doc, &KTextEditor::Document::documentUrlChanged, this, &MainWindow::updateGutter);
         }
@@ -1656,7 +1699,11 @@ bool MainWindow::closeView(KTextEditor::View *view)
 {
     KTextEditor::Document *doc = view->document();
     TabView *group = groupOf(view);
-    if (doc->views().size() > 1) { // still open in another group
+    const QList<KTextEditor::View *> tabs = allViews(); // (a side-by-side diff's view of it does not count)
+    if (std::count_if(tabs.cbegin(), tabs.cend(), [doc](KTextEditor::View *v) {
+            return v->document() == doc;
+        })
+        > 1) { // still open in another group
         group->removeTab(group->indexOf(view));
         delete view;
     } else {
@@ -1685,6 +1732,10 @@ bool MainWindow::closeAllViews()
         if (!closeView(views.at(i))) {
             return false;
         }
+    }
+    const QList<DiffView *> diffs = diffPages(); // side-by-side diffs of files without a tab, of the index
+    for (DiffView *diff : diffs) {
+        closeTab(diff);
     }
     return true;
 }
@@ -1778,7 +1829,7 @@ void MainWindow::cycleTab(int step)
 
 void MainWindow::updateEditorPage()
 {
-    if (!allViews().isEmpty()) {
+    if (!allViews().isEmpty() || !diffPages().isEmpty()) {
         m_editorStack->setCurrentWidget(m_editorSplit);
     } else if (m_root.isEmpty()) {
         if (m_editorStack->currentWidget() != m_chooserPage) {
@@ -1822,6 +1873,10 @@ void MainWindow::updateTabTitles()
     for (int i = 0; i < group->count(); ++i) {
         auto *view = qobject_cast<KTextEditor::View *>(group->widget(i));
         if (!view) {
+            if (auto *diff = qobject_cast<DiffView *>(group->widget(i))) {
+                group->setTabText(i, diff->title().replace(QLatin1Char('&'), QStringLiteral("&&")));
+                group->setTabToolTip(i, prettyPath(diff->path()));
+            }
             if (auto *preview = qobject_cast<MarkdownPreview *>(group->widget(i)); preview && preview->source()) {
                 const QString path = localPath(preview->source());
                 group->setTabText(i, preview->title().replace(QLatin1Char('&'), QStringLiteral("&&")));
@@ -1855,6 +1910,8 @@ void MainWindow::updateWindowTitle()
         parts << documentTitle(view->document()) + (view->document()->isModified() ? QStringLiteral(" ●") : QString());
     } else if (auto *preview = qobject_cast<MarkdownPreview *>(m_tabs->currentWidget())) {
         parts << preview->title();
+    } else if (auto *diff = qobject_cast<DiffView *>(m_tabs->currentWidget())) {
+        parts << diff->title();
     }
     if (!m_root.isEmpty()) {
         parts << QFileInfo(m_root).fileName();
@@ -2295,10 +2352,18 @@ void MainWindow::updateGutter(KTextEditor::Document *doc)
     gutter->setSource(root, relative, tracked ? m_git->indexState(relative) : QString());
 }
 
-// Alt+F3 / Shift+Alt+F3, like VS Code.
+// Alt+F3 / Shift+Alt+F3, like VS Code (and Alt+F5 / Shift+Alt+F5).
 void MainWindow::goToChange(bool forward)
 {
+    if (auto *diff = qobject_cast<DiffView *>(m_tabs->currentWidget())) {
+        diff->goToChange(forward);
+        return;
+    }
     KTextEditor::View *view = currentView();
+    if (view && !view->document()->property("lieveDiffKey").toString().isEmpty()) {
+        DiffView::goToHunk(view, forward); // a unified diff: its "@@" lines
+        return;
+    }
     GitGutter *gutter = view ? m_gutters.value(view->document()) : nullptr;
     const int line = gutter ? gutter->nextChange(view->cursorPosition().line(), forward) : -1;
     if (line >= 0) {
@@ -2315,14 +2380,191 @@ void MainWindow::showChange(KTextEditor::Document *doc, int line)
         if (entry.group != Lieve::GitEntry::Changes || m_git->absolutePath(entry.path) != path) {
             continue;
         }
-        m_git->diff(entry, [this, entry, line](const QString &text) {
+        openChanges(entry, line);
+        return;
+    }
+}
+
+// A change's diff, side by side (git/sideBySide, else VS Code's
+// diffEditor.renderSideBySide) when it can be, at `line` of the new version
+// (-1: its first change); in place of the tab `replace`.
+void MainWindow::openChanges(const Lieve::GitEntry &entry, int line, QWidget *replace)
+{
+    if (DiffView::supports(entry) && configOrVscode(QStringLiteral("git/sideBySide"), m_root, QStringLiteral("diffEditor.renderSideBySide"), true)) {
+        openSideBySide(entry, line, replace);
+        return;
+    }
+    m_git->diff(entry, [this, entry, line, replace = QPointer<QWidget>(replace)](const QString &text) {
+        showDiff(entry, text);
+        const int hunk = line >= 0 ? GitGutter::diffLineFor(text, line) : -1;
+        if (KTextEditor::View *view = currentView(); view && hunk >= 0) {
+            view->setCursorPosition(KTextEditor::Cursor(hunk, 0));
+        }
+        if (replace) {
+            closeTab(replace);
+        }
+    });
+}
+
+void MainWindow::openSideBySide(const Lieve::GitEntry &entry, int line, QWidget *replace)
+{
+    const auto showOpen = [this, entry, line](QWidget *replaced) {
+        for (DiffView *diff : diffPages()) {
+            if (diff->key() == DiffView::keyOf(entry)) { // open already: shown, at that change
+                setActiveGroup(groupOfPage(diff));
+                m_tabs->setCurrentWidget(diff);
+                if (line >= 0) {
+                    diff->revealLine(line);
+                }
+                if (replaced && replaced != diff) {
+                    closeTab(replaced);
+                }
+                return true;
+            }
+        }
+        return false;
+    };
+    if (showOpen(replace)) {
+        return;
+    }
+    DiffView::load(m_git, entry, [this, entry, line, showOpen, replace = QPointer<QWidget>(replace)](const DiffView::Texts &texts) {
+        if (showOpen(replace)) { // opened meanwhile (a second click)
+            return;
+        }
+        if (!texts.ok) { // binary or large: the unified diff
+            m_git->diff(entry, [this, entry, replace](const QString &text) {
+                showDiff(entry, text);
+                if (replace) {
+                    closeTab(replace);
+                }
+            });
+            return;
+        }
+        KTextEditor::Document *working = nullptr;
+        if (entry.group == Lieve::GitEntry::Changes) {
+            if (KTextEditor::View *view = findView(QFileInfo(m_git->absolutePath(entry.path)).canonicalFilePath())) {
+                working = view->document(); // the right side edits the file's own document
+            }
+        }
+        auto *diff = new DiffView(
+            m_staging,
+            entry,
+            texts,
+            working,
+            [this](KTextEditor::View *view) {
+                applyKeymap(view);
+            },
+            m_tabs);
+        connect(diff, &DiffView::titleChanged, this, [this] {
+            updateTabTitles();
+            updateWindowTitle();
+        });
+        connect(diff, &DiffView::focused, this, [this, diff] {
+            setActiveGroup(groupOfPage(diff));
+        });
+        connect(diff, &DiffView::documentEdited, this, [this, diff] {
+            adoptDiffDocument(diff);
+        });
+        // Closing the file's last tab closes its diff, like a preview.
+        connect(diff, &DiffView::documentClosed, this, [this, diff = QPointer<DiffView>(diff)] {
+            QTimer::singleShot(0, this, [this, diff] {
+                if (diff) {
+                    closeTab(diff);
+                }
+            });
+        });
+        const int index = m_tabs->count() == 0 ? 0 : m_tabs->currentIndex() + 1; // next to the current tab
+        m_tabs->insertTab(index, diff, QString());
+        m_tabs->setTabIcon(index, VsCodeIcons::instance().fileIcon(QFileInfo(entry.path).fileName()));
+        m_tabs->setCurrentWidget(diff);
+        if (line >= 0) {
+            diff->revealLine(line);
+        }
+        if (replace) {
+            closeTab(replace);
+        }
+        updateTabTitles();
+        updateEditorPage();
+        updateWindowTitle();
+    });
+}
+
+// The tab bar's Inline / Side by Side button: the same change the other way,
+// in place of this tab; remembered in lieve.conf like VS Code's setting.
+void MainWindow::toggleDiffView(QWidget *page)
+{
+    setActiveGroup(groupOfPage(page));
+    const QString comment = tr("Diffs of changes side by side (true) or inline (false); auto = like VS Code (diffEditor.renderSideBySide).");
+    if (auto *diff = qobject_cast<DiffView *>(page)) {
+        setConfigValue(QStringLiteral("git"), QStringLiteral("sideBySide"), QStringLiteral("false"), comment);
+        const Lieve::GitEntry entry = diff->entry();
+        m_git->diff(entry, [this, entry, diff = QPointer<DiffView>(diff)](const QString &text) {
             showDiff(entry, text);
-            const int hunk = GitGutter::diffLineFor(text, line);
-            if (KTextEditor::View *view = currentView(); view && hunk >= 0) {
-                view->setCursorPosition(KTextEditor::Cursor(hunk, 0));
+            if (diff) {
+                closeTab(diff);
             }
         });
         return;
+    }
+    auto *view = qobject_cast<KTextEditor::View *>(page);
+    const std::optional<Lieve::GitEntry> entry = view ? DiffView::entryOf(m_git, view->document()->property("lieveDiffKey").toString()) : std::nullopt;
+    if (entry && DiffView::supports(*entry)) {
+        setConfigValue(QStringLiteral("git"), QStringLiteral("sideBySide"), QStringLiteral("true"), comment);
+        openSideBySide(*entry, -1, view);
+    }
+}
+
+QList<DiffView *> MainWindow::diffPages() const
+{
+    QList<DiffView *> pages;
+    for (TabView *group : m_groups) {
+        for (int i = 0; i < group->count(); ++i) {
+            if (auto *diff = qobject_cast<DiffView *>(group->widget(i))) {
+                pages << diff;
+            }
+        }
+    }
+    return pages;
+}
+
+// The document a side-by-side diff opened for a file without a tab, now the window's.
+KTextEditor::Document *MainWindow::takeDiffDocument(const QString &path)
+{
+    for (DiffView *diff : diffPages()) {
+        if (diff->ownsDocument() && localPath(diff->document()) == path) {
+            KTextEditor::Document *doc = diff->releaseDocument();
+            doc->setParent(this);
+            return doc;
+        }
+    }
+    return nullptr;
+}
+
+// Edited in its diff: the file gets a tab of its own next to it (saving,
+// unsaved changes on closing, hot exit work as for any file).
+void MainWindow::adoptDiffDocument(DiffView *diff)
+{
+    TabView *group = groupOfPage(diff);
+    KTextEditor::Document *doc = diff->ownsDocument() ? diff->document() : nullptr;
+    if (!group || !doc) {
+        return;
+    }
+    QWidget *focus = QApplication::focusWidget();
+    diff->releaseDocument();
+    doc->setParent(this);
+    addView(doc, group); // after the current tab, which stays current
+    if (focus) {
+        focus->setFocus();
+    }
+}
+
+// Stage / Unstage / Revert Selected Ranges: in a side-by-side diff, or the editor.
+void MainWindow::runStagingCommand(int command)
+{
+    if (auto *diff = qobject_cast<DiffView *>(m_tabs->currentWidget())) {
+        diff->run(GitStaging::Command(command));
+    } else if (KTextEditor::View *view = currentView()) {
+        m_staging->run(GitStaging::Command(command), view);
     }
 }
 
@@ -2372,6 +2614,16 @@ void MainWindow::showDiffTab(const QString &key, const QString &title, const QSt
     doc->setModified(false);
     doc->setReadWrite(false);
     colorDiff(doc);
+    // The colours to the right edge (KTextEditor paints them only behind the text).
+    QList<LineTint::Span> spans;
+    if (const auto ranges = m_diffRanges.value(doc)) {
+        for (const auto &range : *ranges) {
+            spans << LineTint::spanOf(range.get());
+        }
+    }
+    if (LineTint *tint = LineTint::of(view)) {
+        tint->set(spans);
+    }
     activateView(view);
     updateEditorPage();
     updateTabTitles();
@@ -2954,6 +3206,8 @@ bool MainWindow::closeTab(QWidget *page)
     if (group->count() == 0) {
         removeGroup(group);
     }
+    updateEditorPage(); // a side-by-side diff may have been the last tab
+    updateWindowTitle();
     if (focused) {
         if (QWidget *current = m_tabs->currentWidget()) {
             current->setFocus();

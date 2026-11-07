@@ -2,6 +2,7 @@
 
 #include <QList>
 #include <QObject>
+#include <QPoint>
 #include <QPointer>
 #include <QString>
 #include <QTimer>
@@ -62,6 +63,8 @@ public:
 
 Q_SIGNALS:
     void clicked(int line);
+    // A right click on the mark of `line` (Stage Change, Revert Change...).
+    void menuRequested(int line, const QPoint &globalPos);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -99,4 +102,5 @@ private:
     QList<Change> m_changes; // sorted by line
     QTimer m_timer;
     int m_pressedLine = -1;
+    bool m_menuPressed = false; // a right click on a mark: its release is ours too
 };

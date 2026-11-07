@@ -29,10 +29,12 @@ class GitRepo;
 struct GitEntry;
 class LspManager;
 }
+class DiffView;
 class EditorOutline;
 class Explorer;
 class GitGutter;
 class GitPanel;
+class GitStaging;
 class ProblemsPanel;
 class ProjectList;
 class QAction;
@@ -147,6 +149,14 @@ private:
     void goToChange(bool forward);
     void showChange(KTextEditor::Document *doc, int line);
     QString documentTitle(KTextEditor::Document *doc) const;
+    // Side-by-side diffs (diffview.h) and staging part of a file (gitstaging.h)
+    void openChanges(const Lieve::GitEntry &entry, int line, QWidget *replace = nullptr);
+    void openSideBySide(const Lieve::GitEntry &entry, int line, QWidget *replace);
+    void toggleDiffView(QWidget *page);
+    QList<DiffView *> diffPages() const;
+    KTextEditor::Document *takeDiffDocument(const QString &path);
+    void adoptDiffDocument(DiffView *diff);
+    void runStagingCommand(int command);
 
     // Bottom status bar
     void updateStatusBar();
@@ -196,6 +206,7 @@ private:
     SearchPanel *m_search = nullptr;
     Lieve::GitRepo *m_git = nullptr;
     GitPanel *m_gitPanel = nullptr;
+    GitStaging *m_staging = nullptr; // Stage / Unstage / Revert Selected Ranges
     QStackedWidget *m_editorStack = nullptr;
     QWidget *m_chooserPage = nullptr;
     ProjectList *m_chooser = nullptr;
