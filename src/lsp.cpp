@@ -6,6 +6,7 @@
 #include "prettier.h"
 #include "settings.h"
 #include "statusbar.h"
+#include "symbolactions.h"
 #include "symbolpicker.h"
 #include "theme.h"
 
@@ -386,10 +387,13 @@ LspManager::LspManager(MainWindow *window, StatusBar *status, QWidget *overlayPa
             goToDefinition(m_current, m_current->cursorPosition());
         }
     });
+    m_symbols = new SymbolActions(this, window, overlayParent);
 }
 
 LspManager::~LspManager()
 {
+    delete m_symbols; // its inline notes leave the views first
+    m_symbols = nullptr;
     m_link.reset();
     for (const QPointer<KTextEditor::View> &view : std::as_const(m_views)) {
         if (view) {
@@ -418,6 +422,13 @@ QList<LspManager::Shortcut> LspManager::shortcuts()
          [this] {
              if (m_current) {
                  goToDefinition(m_current, m_current->cursorPosition());
+             }
+         }},
+        {tr("Go to References"),
+         {QKeySequence(Qt::SHIFT | Qt::Key_F12)},
+         [this] {
+             if (m_current) {
+                 m_symbols->findReferences(m_current, m_current->cursorPosition());
              }
          }},
         {tr("Go Back"),
@@ -602,6 +613,9 @@ void LspManager::serverReady(LspClient *client)
         }
     }
     updateStatus();
+    if (m_symbols) {
+        m_symbols->serverReady();
+    }
 }
 
 void LspManager::serverNotification(LspClient *client, const QString &method, const QJsonObject &params)
@@ -753,6 +767,7 @@ void LspManager::addDocument(KTextEditor::Document *doc)
     });
     attach(doc);
     updateIdle();
+    m_symbols->addDocument(doc);
 }
 
 void LspManager::attach(KTextEditor::Document *doc)
@@ -810,6 +825,7 @@ void LspManager::removeDocument(KTextEditor::Document *doc)
     if (m_link && m_linkView && m_linkView->document() == doc) {
         m_link.reset();
     }
+    m_symbols->removeDocument(doc);
     DocState *s = state(doc);
     if (!s) {
         return;
@@ -1213,22 +1229,59 @@ void LspManager::addView(KTextEditor::View *view)
         if (!menu) {
             return;
         }
+        const QList<QAction *> symbolActions = m_symbols->menuActions(); // Go to References, Rename Symbol
         if (!menu->actions().contains(m_definitionAction)) {
             QAction *first = menu->actions().value(0);
             menu->insertAction(first, m_definitionAction);
+            menu->insertActions(first, symbolActions);
             menu->insertSeparator(first);
         }
         m_definitionAction->setVisible(readyClient(v->document()) != nullptr);
+        for (QAction *action : symbolActions) {
+            action->setVisible(m_definitionAction->isVisible());
+        }
         if (m_menuView != v || !m_menuClock.isValid() || m_menuClock.elapsed() > 1500) {
             m_menuView = nullptr; // opened from the keyboard: at the cursor
         }
     });
+    m_symbols->addView(view);
 }
 
 void LspManager::setCurrentView(KTextEditor::View *view)
 {
     m_current = view;
     updateStatus();
+    m_symbols->setCurrentView(view);
+}
+
+LspClient *LspManager::serverFor(KTextEditor::Document *doc) const
+{
+    DocState *s = doc ? state(doc) : nullptr;
+    return s && !s->serverId.isEmpty() ? m_clients.value(s->serverId) : nullptr;
+}
+
+QList<KTextEditor::Document *> LspManager::openDocuments(const LspClient *client) const
+{
+    QList<KTextEditor::Document *> out;
+    for (const auto &[doc, s] : m_docs) {
+        if (client && s->open && s->serverId == client->spec().id) {
+            out.append(doc);
+        }
+    }
+    return out;
+}
+
+QPair<KTextEditor::View *, KTextEditor::Cursor> LspManager::menuTarget() const
+{
+    if (m_menuView && m_menuCursor.isValid()) {
+        return {m_menuView, m_menuCursor};
+    }
+    return {m_current, m_current ? m_current->cursorPosition() : KTextEditor::Cursor::invalid()};
+}
+
+void LspManager::applySettings()
+{
+    m_symbols->applySettings();
 }
 
 QString LspManager::textHint(KTextEditor::View *view, KTextEditor::Cursor position)

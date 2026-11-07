@@ -479,6 +479,11 @@ void SettingsDialog::build()
               tr("Language Servers"),
               tr("Go to definition, errors and completion from language servers. Automatic uses the servers it finds installed."),
               {{tr("Automatic"), QStringLiteral("auto")}, {tr("Off"), QStringLiteral("false")}});
+    addCheck(QStringLiteral("lsp/codeLens"),
+             true,
+             Apply::Editors,
+             tr("Reference Counts"),
+             tr("Shows how many times classes, functions, methods and properties are used, at the end of their line. Click the count to list them."));
 
     // ---- Updates
     addCategory(QStringLiteral("updates"), tr("Updates"));

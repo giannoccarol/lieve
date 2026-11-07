@@ -38,6 +38,7 @@ namespace Lieve
 class LspClient;
 class LspCompletionModel;
 class LspHints;
+class SymbolActions;
 
 // Icons for LSP completion item kinds and symbol kinds.
 QIcon completionKindIcon(int kind);
@@ -104,6 +105,18 @@ public:
     // the text as it was at `revision`.
     void applyEdits(KTextEditor::Document *doc, const QJsonArray &edits, qint64 revision);
 
+    // For Go to References, Rename Symbol and the reference counts
+    // (symbolactions.h): the document's server, also while it starts;
+    // the documents open in a server; where the context menu was opened
+    // (else the current view's cursor); a jump that Alt+Left comes back from.
+    LspClient *serverFor(KTextEditor::Document *doc) const;
+    QList<KTextEditor::Document *> openDocuments(const LspClient *client) const;
+    QPair<KTextEditor::View *, KTextEditor::Cursor> menuTarget() const;
+    void jumpTo(const QString &path, KTextEditor::Cursor position, bool record);
+    void flushAll();
+    // Re-reads [lsp] codeLens.
+    void applySettings();
+
     // Automated checks (LIEVE_TEST_LSP): steps separated by '|'.
     void runTest(const QString &script);
 
@@ -145,7 +158,6 @@ private:
     void serverNotification(LspClient *client, const QString &method, const QJsonObject &params);
     void sendOpen(DocState *s, LspClient *client);
     void pullDiagnostics(DocState *s, LspClient *client);
-    void flushAll();
     void lockRevision(DocState *s);
     void releaseRevisions(DocState *s, int upToVersion);
     void setDiagnostics(DocState *s, const QJsonArray &diagnostics, int version);
@@ -155,7 +167,6 @@ private:
     void updateIdle();
     void stopAll(bool wait = false);
 
-    void jumpTo(const QString &path, KTextEditor::Cursor position, bool record);
     void showMessage(KTextEditor::View *view, const QString &text);
     void showHover(KTextEditor::View *view, KTextEditor::Cursor position, const QString &diagnostics, const QJsonValue &result);
     QString diagnosticsHtml(DocState *s, KTextEditor::Cursor position) const;
@@ -180,6 +191,7 @@ private:
     QTimer m_problemsTimer; // coalesces problemsChanged()
     LspCompletionModel *m_completion = nullptr;
     std::unique_ptr<LspHints> m_hints;
+    SymbolActions *m_symbols = nullptr; // references, rename, reference counts
     QAction *m_definitionAction = nullptr; // in the editor's context menu
     QPointer<KTextEditor::View> m_menuView; // where the context menu was opened
     KTextEditor::Cursor m_menuCursor = KTextEditor::Cursor::invalid();

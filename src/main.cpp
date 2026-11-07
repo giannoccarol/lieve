@@ -13,6 +13,7 @@
 #include "searchpanel.h"
 #include "settings.h"
 #include "statusbar.h"
+#include "symbolactions.h"
 #include "tabview.h"
 #include "settingsdialog.h"
 #include "theme.h"
@@ -857,6 +858,16 @@ void setupTestHooks(QApplication &app)
             QTimer::singleShot(at > 0 ? at : 600, window, [window, outlineTest] {
                 if (auto *outline = window->findChild<EditorOutline *>()) {
                     outline->runTest(outlineTest);
+                }
+            });
+        }
+        // Go to References, Rename Symbol, reference counts: steps, see SymbolActions::runTest()
+        const QString refsTest = qEnvironmentVariable("LIEVE_TEST_REFS");
+        if (!refsTest.isEmpty()) {
+            const int at = qEnvironmentVariableIntValue("LIEVE_TEST_REFS_AT");
+            QTimer::singleShot(at > 0 ? at : 600, window, [window, refsTest] {
+                if (auto *actions = window->findChild<Lieve::SymbolActions *>()) {
+                    actions->runTest(refsTest);
                 }
             });
         }

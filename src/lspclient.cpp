@@ -131,7 +131,10 @@ QJsonObject clientCapabilities()
         {QStringLiteral("general"), QJsonObject{{QStringLiteral("positionEncodings"), QJsonArray{QStringLiteral("utf-16")}}}},
         {QStringLiteral("window"), QJsonObject{{QStringLiteral("workDoneProgress"), true}}},
         {QStringLiteral("workspace"),
-         QJsonObject{{QStringLiteral("configuration"), true}, {QStringLiteral("workspaceFolders"), true}, {QStringLiteral("applyEdit"), false}}},
+         QJsonObject{{QStringLiteral("configuration"), true},
+                     {QStringLiteral("workspaceFolders"), true},
+                     {QStringLiteral("applyEdit"), false},
+                     {QStringLiteral("workspaceEdit"), QJsonObject{{QStringLiteral("documentChanges"), true}}}}},
         {QStringLiteral("textDocument"),
          QJsonObject{
              {QStringLiteral("synchronization"),
@@ -159,6 +162,10 @@ QJsonObject clientCapabilities()
              {QStringLiteral("documentSymbol"),
               QJsonObject{{QStringLiteral("hierarchicalDocumentSymbolSupport"), true},
                           {QStringLiteral("symbolKind"), QJsonObject{{QStringLiteral("valueSet"), numbers(1, 26)}}}}},
+             // Go to References, Rename Symbol and the reference counts (symbolactions.h)
+             {QStringLiteral("references"), QJsonObject()},
+             {QStringLiteral("rename"), QJsonObject{{QStringLiteral("prepareSupport"), true}}},
+             {QStringLiteral("codeLens"), QJsonObject()},
          }},
     };
 }
@@ -523,7 +530,12 @@ void LspClient::handleMessage(const QJsonObject &message)
         if (id.toInt() == m_initializeId && !text.isEmpty()) {
             m_error = text.section(QLatin1Char('\n'), 0, 0);
         }
+        QPointer<LspClient> self(this);
+        m_requestError = text;
         finish(id.toInt(), QJsonValue(), false);
+        if (self) {
+            m_requestError.clear();
+        }
     } else {
         finish(id.toInt(), message.value(QLatin1String("result")), true);
     }

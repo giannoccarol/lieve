@@ -84,6 +84,12 @@ public:
     {
         return m_error;
     }
+    // While the callback of a request the server refused runs: the
+    // server's error message ("You cannot rename this element.").
+    QString requestError() const
+    {
+        return m_requestError;
+    }
     QList<qint64> processIds() const;
 
     // Requests sent before the server is ready wait for it. `context` going
@@ -128,5 +134,6 @@ private:
     int m_restarts = 0;
     bool m_stopping = false;
     QString m_error;
+    QString m_requestError;
 };
 }

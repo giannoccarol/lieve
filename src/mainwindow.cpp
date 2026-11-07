@@ -2,6 +2,7 @@
 
 #include "backups.h"
 #include "blame.h"
+#include "codelens.h"
 #include "commandpalette.h"
 #include "explorer.h"
 #include "git.h"
@@ -205,6 +206,9 @@ public:
     QList<int> inlineNotes(int line) const override
     {
         if (line != m_line || !m_doc || MergeConflicts::hasNote(m_doc, line)) { // a conflict marker line has its own note
+            return {};
+        }
+        if (ReferenceLenses::hasNote(m_doc, line)) { // so has a declaration with its reference count (blame: status bar)
             return {};
         }
         return {m_doc->lineLength(line)};
@@ -1766,6 +1770,7 @@ void MainWindow::applySettings()
     }
     showBlame();
     m_outline->applySettings(); // breadcrumbs, sticky scroll
+    m_lsp->applySettings(); // reference counts
 }
 
 void MainWindow::cycleTab(int step)

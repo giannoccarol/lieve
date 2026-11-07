@@ -252,6 +252,9 @@ angular=false
 idleMinutes=5
 ; Memory limit of the TypeScript server (tsserver), in MB.
 maxTsServerMemory=3072
+; Reference counts at the end of the line of classes, functions, methods and
+; properties ("3 references", click to list them), like VS Code's CodeLens.
+codeLens=true
 )");
 
 struct Section {
