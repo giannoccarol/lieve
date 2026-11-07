@@ -1,6 +1,6 @@
 # Maintainer: Lorenzo Giannoccaro <93546162+giannoccarol@users.noreply.github.com>
 pkgname=lieve-git
-pkgver=0.1.3.r0.g5e5570a
+pkgver=0.1.4.r0.g6dc5574
 pkgrel=1
 pkgdesc='Lightweight native code editor for KDE Plasma, with the look and shortcuts of VS Code (development version)'
 arch=('x86_64' 'aarch64')
