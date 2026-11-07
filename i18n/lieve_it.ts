@@ -119,6 +119,54 @@
     </message>
 </context>
 <context>
+    <name>DiffView</name>
+    <message>
+        <location filename="../src/diffview.cpp" line="+378"/>
+        <source>%1 (Index)</source>
+        <translation>%1 (indice)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 (Working Tree)</source>
+        <translation>%1 (albero di lavoro)</translation>
+    </message>
+    <message>
+        <location line="+508"/>
+        <source>These changes are staged: they can be unstaged.</source>
+        <translation>Queste modifiche sono preparate: si possono togliere dalla preparazione.</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>These changes are not staged yet.</source>
+        <translation>Queste modifiche non sono ancora preparate per il commit.</translation>
+    </message>
+    <message>
+        <location line="+332"/>
+        <source>Open File</source>
+        <translation>Apri il file</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Previous Change (Shift+Alt+F5)</source>
+        <translation>Modifica precedente (Shift+Alt+F5)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Next Change (Alt+F5)</source>
+        <translation>Modifica successiva (Alt+F5)</translation>
+    </message>
+    <message>
+        <location line="+46"/>
+        <source>Show Inline</source>
+        <translation>Mostra in linea</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Show Side by Side</source>
+        <translation>Mostra affiancate</translation>
+    </message>
+</context>
+<context>
     <name>EditorOutline</name>
     <message>
         <location filename="../src/outline.cpp" line="+293"/>
@@ -749,6 +797,91 @@ Le sue modifiche andranno perse.</translation>
     </message>
 </context>
 <context>
+    <name>GitStaging</name>
+    <message>
+        <location filename="../src/gitstaging.cpp" line="+74"/>
+        <source>Stage Selected Ranges</source>
+        <translation>Prepara le righe selezionate</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Stage Change</source>
+        <translation>Prepara la modifica</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Unstage Selected Ranges</source>
+        <translation>Togli dalla preparazione le righe selezionate</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Unstage Change</source>
+        <translation>Togli la modifica dalla preparazione</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Revert Selected Ranges</source>
+        <translation>Annulla le righe selezionate</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Revert Change</source>
+        <translation>Annulla la modifica</translation>
+    </message>
+    <message>
+        <location line="+98"/>
+        <location line="+35"/>
+        <source>The file has merge conflicts: resolve them first.</source>
+        <translation>Il file ha conflitti di merge: risolvili prima.</translation>
+    </message>
+    <message>
+        <location line="-22"/>
+        <source>Only part of a text file can be staged.</source>
+        <translation>Si può preparare solo una parte di un file di testo.</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>There are no changes to stage in the selection.</source>
+        <translation>Nella selezione non ci sono modifiche da preparare.</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Couldn&apos;t stage the selected changes</source>
+        <translation>Impossibile preparare le modifiche selezionate</translation>
+    </message>
+    <message>
+        <location line="+26"/>
+        <source>There are no changes to revert in the selection.</source>
+        <translation>Nella selezione non ci sono modifiche da annullare.</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <location line="+5"/>
+        <source>There are no staged changes to unstage in the selection.</source>
+        <translation>Nella selezione non ci sono modifiche preparate da togliere.</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Couldn&apos;t unstage the selected changes</source>
+        <translation>Impossibile togliere dalla preparazione le modifiche selezionate</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>The file is not in the git repository.</source>
+        <translation>Il file non è nel repository git.</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Staged changes are unstaged in their diff: open the file from Staged Changes in the Source Control panel.</source>
+        <translation>Le modifiche preparate si tolgono dalla preparazione nel loro diff: apri il file da «Modifiche preparate per il commit» nel pannello Controllo del codice sorgente.</translation>
+    </message>
+    <message>
+        <location line="+56"/>
+        <source>Open Changes</source>
+        <translation>Mostra le differenze</translation>
+    </message>
+</context>
+<context>
     <name>JumpList</name>
     <message>
         <location filename="../src/jumplist.cpp" line="+21"/>
@@ -774,12 +907,12 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>Lieve::GitRepo</name>
     <message>
-        <location filename="../src/git.cpp" line="+51"/>
+        <location filename="../src/git.cpp" line="+52"/>
         <source>git gave no further details.</source>
         <translation>git non ha dato altre informazioni.</translation>
     </message>
     <message>
-        <location line="+472"/>
+        <location line="+523"/>
         <source>Couldn&apos;t stage the files</source>
         <translation>Impossibile preparare i file</translation>
     </message>
@@ -854,7 +987,12 @@ Le sue modifiche andranno perse.</translation>
         <translation>Impossibile inizializzare il repository</translation>
     </message>
     <message>
-        <location line="+89"/>
+        <location line="+118"/>
+        <source>The file has merge conflicts: resolve them first.</source>
+        <translation>Il file ha conflitti di merge: risolvili prima.</translation>
+    </message>
+    <message>
+        <location line="+69"/>
         <location line="+8"/>
         <source>Couldn&apos;t check out “%1”</source>
         <translation>Impossibile passare a «%1»</translation>
@@ -908,10 +1046,16 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>Lieve::LspManager</name>
     <message>
-        <location filename="../src/lsp.cpp" line="+377"/>
-        <location line="+39"/>
+        <location filename="../src/lsp.cpp" line="+378"/>
+        <location line="+42"/>
         <source>Go to Definition</source>
         <translation>Vai alla definizione</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <location filename="../src/symbolactions.cpp" line="+532"/>
+        <source>Go to References</source>
+        <translation>Vai ai riferimenti</translation>
     </message>
     <message>
         <location line="+7"/>
@@ -939,7 +1083,7 @@ Le sue modifiche andranno perse.</translation>
         <translation>Problema precedente</translation>
     </message>
     <message>
-        <location line="+724"/>
+        <location line="+729"/>
         <source>%1 language server: running</source>
         <translation>Server di linguaggio %1: attivo</translation>
     </message>
@@ -984,12 +1128,13 @@ Le sue modifiche andranno perse.</translation>
         <translation>Clic: pannello Problemi (Ctrl+Shift+M), F8: problema successivo</translation>
     </message>
     <message>
-        <location line="+196"/>
+        <location line="+233"/>
         <source>Go to Definition needs a language server for this file (see [lsp] in Settings, Ctrl+,).</source>
         <translation>Per andare alla definizione serve un server di linguaggio per questo file (vedi [lsp] in Impostazioni, Ctrl+,).</translation>
     </message>
     <message>
         <location line="+4"/>
+        <location filename="../src/symbolactions.cpp" line="+180"/>
         <source>The %1 language server stopped: %2</source>
         <translation>Il server di linguaggio %1 si è fermato: %2</translation>
     </message>
@@ -1025,9 +1170,126 @@ Le sue modifiche andranno perse.</translation>
     </message>
 </context>
 <context>
+    <name>Lieve::ReferenceLenses</name>
+    <message>
+        <location filename="../src/codelens.cpp" line="+251"/>
+        <location filename="../src/symbolactions.cpp" line="+112"/>
+        <source>1 reference</source>
+        <translation>1 riferimento</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <location filename="../src/symbolactions.cpp" line="+0"/>
+        <source>%1 references</source>
+        <translation>%1 riferimenti</translation>
+    </message>
+</context>
+<context>
+    <name>Lieve::SymbolActions</name>
+    <message>
+        <location filename="../src/symbolactions.cpp" line="-397"/>
+        <source>Enter to rename, Escape to cancel</source>
+        <translation>Invio per rinominare, Esc per annullare</translation>
+    </message>
+    <message>
+        <location line="+107"/>
+        <location line="+46"/>
+        <source>Rename Symbol</source>
+        <translation>Rinomina simbolo</translation>
+    </message>
+    <message>
+        <location line="-30"/>
+        <source>Toggle Reference Counts</source>
+        <translation>Mostra/nascondi il numero di riferimenti</translation>
+    </message>
+    <message>
+        <location line="+182"/>
+        <source>Go to References needs a language server for this file (see [lsp] in Settings, Ctrl+,).</source>
+        <translation>Per andare ai riferimenti serve un server di linguaggio per questo file (vedi [lsp] nelle Impostazioni, Ctrl+,).</translation>
+    </message>
+    <message>
+        <location line="+62"/>
+        <source>No references found.</source>
+        <translation>Nessun riferimento trovato.</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>No references found for “%1”.</source>
+        <translation>Nessun riferimento trovato per «%1».</translation>
+    </message>
+    <message>
+        <location line="+32"/>
+        <source>1 reference to “%1”</source>
+        <translation>1 riferimento a «%1»</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>%1 references to “%2”</source>
+        <translation>%1 riferimenti a «%2»</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <location line="+94"/>
+        <source>Rename Symbol needs a language server for this file (see [lsp] in Settings, Ctrl+,).</source>
+        <translation>Per rinominare un simbolo serve un server di linguaggio per questo file (vedi [lsp] nelle Impostazioni, Ctrl+,).</translation>
+    </message>
+    <message>
+        <location line="-83"/>
+        <location line="+46"/>
+        <location line="+92"/>
+        <source>This element cannot be renamed.</source>
+        <translation>Questo elemento non si può rinominare.</translation>
+    </message>
+    <message>
+        <location line="-6"/>
+        <source>Rename failed: the language server did not answer.</source>
+        <translation>Rinomina non riuscita: il server di linguaggio non ha risposto.</translation>
+    </message>
+    <message>
+        <location line="+57"/>
+        <source>%1 has unsaved changes.</source>
+        <translation>%1 ha modifiche non salvate.</translation>
+    </message>
+    <message>
+        <location line="+45"/>
+        <source>%1: the changes overlap.</source>
+        <translation>%1: le modifiche si sovrappongono.</translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>Renamed 1 occurrence in 1 file.</source>
+        <translation>Rinominata 1 occorrenza in 1 file.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Renamed %1 occurrences in 1 file.</source>
+        <translation>Rinominate %1 occorrenze in 1 file.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Renamed %1 occurrences in %2 files.</source>
+        <translation>Rinominate %1 occorrenze in %2 file.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Nothing was renamed.</source>
+        <translation>Non è stato rinominato nulla.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Not changed: %1</source>
+        <translation>Non modificati: %1</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Files to create, rename or delete were left as they are: %1</source>
+        <translation>I file da creare, rinominare o eliminare sono rimasti com&apos;erano: %1</translation>
+    </message>
+</context>
+<context>
     <name>Lsp</name>
     <message>
-        <location filename="../src/lspclient.cpp" line="+282"/>
+        <location filename="../src/lspclient.cpp" line="+289"/>
         <source>cannot run %1</source>
         <translation>impossibile avviare %1</translation>
     </message>
@@ -1042,7 +1304,7 @@ Le sue modifiche andranno perse.</translation>
         <translation>il server non ha risposto</translation>
     </message>
     <message>
-        <location line="+257"/>
+        <location line="+262"/>
         <source>the server crashed</source>
         <translation>il server è andato in crash</translation>
     </message>
@@ -1055,7 +1317,7 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/mainwindow.cpp" line="+396"/>
+        <location filename="../src/mainwindow.cpp" line="+403"/>
         <source>Explorer (Ctrl+Shift+E)</source>
         <translation>Esplora risorse (Ctrl+Shift+E)</translation>
     </message>
@@ -1066,12 +1328,12 @@ Le sue modifiche andranno perse.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+1881"/>
+        <location line="+1936"/>
         <source>Source Control (Ctrl+Shift+G)</source>
         <translation>Controllo del codice sorgente (Ctrl+Shift+G)</translation>
     </message>
     <message>
-        <location line="-1879"/>
+        <location line="-1934"/>
         <source>Side Bar (Ctrl+B)</source>
         <translation>Barra laterale (Ctrl+B)</translation>
     </message>
@@ -1081,13 +1343,13 @@ Le sue modifiche andranno perse.</translation>
         <translation>Terminale (Ctrl+J)</translation>
     </message>
     <message>
-        <location line="+228"/>
-        <location line="+1233"/>
+        <location line="+227"/>
+        <location line="+1289"/>
         <source>Choose a project</source>
         <translation>Scegli un progetto</translation>
     </message>
     <message>
-        <location line="-1214"/>
+        <location line="-1270"/>
         <location line="+209"/>
         <source>Open Folder…</source>
         <translation>Apri cartella…</translation>
@@ -1126,12 +1388,12 @@ Le sue modifiche andranno perse.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+226"/>
+        <location line="+244"/>
         <source>Settings</source>
         <translation>Impostazioni</translation>
     </message>
     <message>
-        <location line="-189"/>
+        <location line="-207"/>
         <source>Search projects… (Enter: open · Ctrl+Enter: replace in this window)</source>
         <translation>Cerca progetto… (Invio: apri · Ctrl+Invio: sostituisci in questa finestra)</translation>
     </message>
@@ -1246,7 +1508,7 @@ Le sue modifiche andranno perse.</translation>
         <translation>Sposta lo stato attivo sul terzo gruppo di editor</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Go to Next Change</source>
         <translation>Vai alla modifica successiva</translation>
     </message>
@@ -1256,7 +1518,7 @@ Le sue modifiche andranno perse.</translation>
         <translation>Vai alla modifica precedente</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+20"/>
         <source>Format Document</source>
         <translation>Formatta documento</translation>
     </message>
@@ -1302,22 +1564,22 @@ Le sue modifiche andranno perse.</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+940"/>
+        <location line="+978"/>
         <source>Open Preview to the Side</source>
         <translation>Apri l&apos;anteprima a lato</translation>
     </message>
     <message>
-        <location line="-655"/>
+        <location line="-693"/>
         <source>Problems</source>
         <translation>Problemi</translation>
     </message>
     <message>
-        <location line="+478"/>
+        <location line="+509"/>
         <source>Open File</source>
         <translation>Apri file</translation>
     </message>
     <message>
-        <location line="+158"/>
+        <location line="+165"/>
         <source>Close</source>
         <translation>Chiudi</translation>
     </message>
@@ -1367,12 +1629,17 @@ Le sue modifiche andranno perse.</translation>
         <translation>Branch %1 — clic: passa a un altro branch</translation>
     </message>
     <message>
-        <location line="+1012"/>
+        <location line="+479"/>
+        <source>Diffs of changes side by side (true) or inline (false); auto = like VS Code (diffEditor.renderSideBySide).</source>
+        <translation>Differenze delle modifiche affiancate (true) o in linea (false); auto = come VS Code (diffEditor.renderSideBySide).</translation>
+    </message>
+    <message>
+        <location line="+742"/>
         <source>Open Preview to the Side (Ctrl+K V)</source>
         <translation>Apri l&apos;anteprima a lato (Ctrl+K V)</translation>
     </message>
     <message>
-        <location line="-1007"/>
+        <location line="-1216"/>
         <source>Synchronize with %1 (pull and push)</source>
         <translation>Sincronizza con %1 (pull e push)</translation>
     </message>
@@ -1577,7 +1844,7 @@ Le sue modifiche andranno perse.</translation>
         <translation>Controllo del codice sorgente (Ctrl+Shift+G) — %1 modifiche</translation>
     </message>
     <message>
-        <location line="+51"/>
+        <location line="+248"/>
         <source>%1 (Changes)</source>
         <translation>%1 (modifiche)</translation>
     </message>
@@ -1604,7 +1871,7 @@ Le sue modifiche andranno perse.</translation>
 </translation>
     </message>
     <message>
-        <location line="+156"/>
+        <location line="+166"/>
         <source>Prettier is not installed in this project (node_modules/prettier).</source>
         <translation>Prettier non è installato in questo progetto (node_modules/prettier).</translation>
     </message>
@@ -2125,27 +2392,33 @@ Le sue modifiche andranno perse.</translation>
     </message>
     <message>
         <location line="+77"/>
+        <location filename="../src/symbolactions.cpp" line="-41"/>
         <source>%1 no longer exists.</source>
         <translation>%1 non esiste più.</translation>
     </message>
     <message>
         <location line="+8"/>
         <location line="+111"/>
+        <location filename="../src/symbolactions.cpp" line="-46"/>
+        <location line="+58"/>
         <source>%1 is read-only.</source>
         <translation>%1 è di sola lettura.</translation>
     </message>
     <message>
         <location line="-74"/>
+        <location filename="../src/symbolactions.cpp" line="-9"/>
         <source>%1 could not be read.</source>
         <translation>Impossibile leggere %1.</translation>
     </message>
     <message>
         <location line="+9"/>
+        <location filename="../src/symbolactions.cpp" line="+3"/>
         <source>%1 is not a UTF-8 text file.</source>
         <translation>%1 non è un file di testo UTF-8.</translation>
     </message>
     <message>
         <location line="+70"/>
+        <location filename="../src/symbolactions.cpp" line="+9"/>
         <source>%1 could not be written: %2</source>
         <translation>Impossibile scrivere %1: %2</translation>
     </message>
@@ -2291,6 +2564,9 @@ angular=false
 idleMinutes=5
 ; Memory limit of the TypeScript server (tsserver), in MB.
 maxTsServerMemory=3072
+; Reference counts at the end of the line of classes, functions, methods and
+; properties (&quot;3 references&quot;, click to list them), like VS Code&apos;s CodeLens.
+codeLens=true
 </source>
         <translation>
 [lsp]
@@ -2311,6 +2587,9 @@ angular=false
 idleMinutes=5
 ; Limite di memoria del server TypeScript (tsserver), in MB.
 maxTsServerMemory=3072
+; Numero di riferimenti alla fine della riga di classi, funzioni, metodi e
+; proprieta (&quot;3 riferimenti&quot;, clic per elencarli), come il CodeLens di VS Code.
+codeLens=true
 </translation>
     </message>
     <message>
@@ -2443,12 +2722,12 @@ check=true
     <name>SettingsDialog</name>
     <message>
         <location filename="../src/settingsdialog.cpp" line="+156"/>
-        <location line="+706"/>
+        <location line="+711"/>
         <source>Settings</source>
         <translation>Impostazioni</translation>
     </message>
     <message>
-        <location line="-678"/>
+        <location line="-683"/>
         <source>Search settings</source>
         <translation>Cerca impostazioni</translation>
     </message>
@@ -2532,12 +2811,12 @@ check=true
         <location line="+34"/>
         <location line="+122"/>
         <location line="+38"/>
-        <location line="+248"/>
+        <location line="+253"/>
         <source>Automatic</source>
         <translation>Automatico</translation>
     </message>
     <message>
-        <location line="-431"/>
+        <location line="-436"/>
         <source>Color Theme</source>
         <translation>Tema colori</translation>
     </message>
@@ -2866,12 +3145,23 @@ check=true
     </message>
     <message>
         <location line="+1"/>
-        <location line="+248"/>
+        <location line="+253"/>
         <source>Off</source>
         <translation>Disattivato</translation>
     </message>
     <message>
-        <location line="-245"/>
+        <location line="-249"/>
+        <source>Reference Counts</source>
+        <translation>Numero di riferimenti</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location filename="../src/symbolactions.cpp" line="-1040"/>
+        <source>Shows how many times classes, functions, methods and properties are used, at the end of their line. Click the count to list them.</source>
+        <translation>Mostra quante volte classi, funzioni, metodi e proprietà sono usati, alla fine della loro riga. Clic sul numero per elencarli.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>Updates</source>
         <translation>Aggiornamenti</translation>
     </message>
@@ -2953,7 +3243,7 @@ check=true
     </message>
     <message>
         <location filename="../src/outline.cpp" line="-15"/>
-        <location filename="../src/settingsdialog.cpp" line="-562"/>
+        <location filename="../src/settingsdialog.cpp" line="-567"/>
         <source>Shows the path of the file and the symbols around the cursor above the editor.</source>
         <translation>Mostra sopra l&apos;editor il percorso del file e i simboli in cui si trova il cursore.</translation>
     </message>
