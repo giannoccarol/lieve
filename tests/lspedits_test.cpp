@@ -5,6 +5,7 @@
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QTemporaryDir>
@@ -195,8 +196,11 @@ int main(int argc, char **argv)
         const QString readOnly = dir.filePath(QStringLiteral("readonly.ts"));
         writeFile(readOnly, "abc\n");
         QFile::setPermissions(readOnly, QFileDevice::ReadOwner);
-        expect(applyTextEditsToFile(readOnly, {edit(0, 0, 0, 1, QStringLiteral("x"))}) == FileEditResult::ReadOnly && readFile(readOnly) == "abc\n",
-               "file: read-only, left alone");
+        // root (as in CI containers) may write any file: nothing to check then
+        if (!QFileInfo(readOnly).isWritable()) {
+            expect(applyTextEditsToFile(readOnly, {edit(0, 0, 0, 1, QStringLiteral("x"))}) == FileEditResult::ReadOnly && readFile(readOnly) == "abc\n",
+                   "file: read-only, left alone");
+        }
 
         const QString lines = dir.filePath(QStringLiteral("lines.ts"));
         writeFile(lines, "\xEF\xBB\xBFone\r\ntwo\nthree");
