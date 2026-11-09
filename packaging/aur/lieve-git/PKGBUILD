@@ -7,9 +7,10 @@ arch=('x86_64' 'aarch64')
 url='https://github.com/giannoccarol/lieve'
 license=('GPL-3.0-only')
 depends=('qt6-base' 'qt6-svg' 'ktexteditor' 'kparts' 'kxmlgui' 'kcoreaddons' 'kconfig' 'kwidgetsaddons'
-         'kdbusaddons' 'kwindowsystem' 'ki18n' 'syntax-highlighting' 'konsole' 'ripgrep' 'git' 'hicolor-icon-theme')
+         'kdbusaddons' 'kwindowsystem' 'ki18n' 'syntax-highlighting' 'breeze-icons' 'ripgrep' 'git' 'hicolor-icon-theme')
 makedepends=('qt6-tools' 'pkgconf')
-optdepends=('nodejs: Prettier and ESLint on save, with the project'"'"'s own packages'
+optdepends=('konsole: integrated terminal (without it terminals open in your terminal app)'
+            'nodejs: Prettier and ESLint on save, with the project'"'"'s own packages'
             'typescript-language-server: go to definition, errors and completion for TypeScript/JavaScript')
 provides=('lieve')
 conflicts=('lieve')

@@ -2,7 +2,8 @@
 
 <img src="data/lieve.svg" alt="" width="96" align="right">
 
-A lightweight, native code editor for KDE Plasma (Qt 6 + KDE Frameworks, no Electron).
+A lightweight, native code editor for Linux and Windows (Qt 6 + KDE Frameworks, no Electron), at home on
+KDE Plasma and at ease on GNOME and the other desktops.
 It does a few things and does them well: **Explorer**, **Search and replace in files**, **Quick Open**
 (`Ctrl+P`) and the **Command Palette** (`Ctrl+Shift+P`), **editor** (also side by side) and **terminal**,
 with several projects open at once (one window per project), **Prettier and ESLint on save**, a **Git panel**
@@ -53,13 +54,18 @@ and `symbolpicker` (language servers), `backups` (hot exit), `settingsdialog`, `
 
 ## Install
 
-You need KDE Plasma 6 (or at least KDE Frameworks 6) with `qt6-base`, `qt6-svg`, `ktexteditor`, `kparts`,
-`kdbusaddons`, `kwindowsystem`, `syntax-highlighting`, `ki18n`, `konsole` and `ripgrep`, plus `git`, `gcc`,
-`make`, `pkgconf` and `qt6-tools` (for the translations; without it Lieve builds in English only) to build it.
-On Arch/CachyOS with Plasma almost everything is already installed. No CMake needed.
+### Linux
+
+Any desktop works: Lieve needs KDE Frameworks 6 (the libraries, not Plasma) with `qt6-base`, `qt6-svg`,
+`ktexteditor`, `kparts`, `kdbusaddons`, `kwindowsystem`, `syntax-highlighting`, `ki18n`, `breeze-icons` and
+`ripgrep`, plus `git`, `gcc`, `make`, `pkgconf` and `qt6-tools` (for the translations; without it Lieve builds
+in English only) to build it. `konsole` is optional: with it the terminal sits in Lieve's panel, without it
+terminals open in your terminal app. On Arch/CachyOS with Plasma almost everything is already installed;
+Debian 13, Ubuntu 25.04 and Fedora have all of it too (older Ubuntu releases only have KDE Frameworks 5).
+No CMake needed.
 
 The easy way: the script downloads the latest release, builds it and installs it into `~/.local`
-(no `sudo`). If something is missing it tells you which packages to install (Arch and Fedora).
+(no `sudo`). If something is missing it tells you which packages to install (Arch, Fedora, Debian/Ubuntu).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/giannoccarol/lieve/main/install.sh | bash
@@ -79,6 +85,22 @@ Uninstall: `make uninstall`.
 **Arch Linux / CachyOS**: [`packaging/aur`](packaging/aur) has the PKGBUILDs, `lieve` (latest release) and
 `lieve-git` (main branch). Once they are on the AUR: `yay -S lieve`.
 
+Outside Plasma Lieve follows the desktop through the freedesktop portal (light or dark, accent colour, as on
+GNOME), and the Breeze icons fill in those the desktop's icon theme lacks.
+
+### Windows
+
+Download `Lieve-…-windows-x64.zip` from the [latest release](https://github.com/giannoccarol/lieve/releases/latest),
+unzip it anywhere and run `lieve.exe` (Windows 10 or 11, 64-bit; nothing to install, ripgrep included).
+For the Git features install [Git for Windows](https://git-scm.com/download/win); for Prettier, ESLint and the
+language servers, [Node.js](https://nodejs.org/). Terminals and npm scripts open in
+[Windows Terminal](https://aka.ms/terminal) (or a console window), with PowerShell 7, Windows PowerShell, cmd,
+Git Bash or WSL. Lieve follows Windows' light/dark mode and accent colour.
+
+The Windows build is new: for now each launch is a process of its own, and updates are a new zip from the
+release page (Lieve tells you when one is out). It is built with [MSYS2](https://www.msys2.org/) and the same
+Makefile, see [`packaging/windows`](packaging/windows) and the Windows workflow.
+
 ### Updates
 
 Lieve checks by itself, shortly after starting and then every 6 hours, whether a new version is out on GitHub.
@@ -86,7 +108,8 @@ If there is one, the status bar shows **⬆ Update 0.x.y**: one click shows what
 **Update Now** downloads, builds and installs the new version in the background, in the same
 folder Lieve is installed in. When it's done, click **↻ Restart**. The downloaded sources stay in
 `~/.local/share/lieve/source`. Turn the check off with `[updates] check=false` in the settings (`Ctrl+,`).
-Packages (`make PACKAGED=1`, as the AUR ones) leave updates to the package manager.
+Packages (`make PACKAGED=1`, as the AUR ones) leave updates to the package manager; on Windows the update
+opens the release page with the new zip.
 
 ## Usage
 
@@ -209,6 +232,9 @@ exclude). `Ctrl+Shift+H` (or the chevron next to the search box) shows a **Repla
 `Ctrl+J` shows the terminal panel, `` Ctrl+Shift+` `` (or **+**) opens a new terminal in the project folder.
 
 - New terminals run your **login shell** (the one set with `chsh`, e.g. fish), not `$SHELL`.
+- Without Konsole (on Windows, or a Linux desktop without it) terminals and npm scripts open in your terminal
+  app instead: `$TERMINAL`, `xdg-terminal-exec`, GNOME Console, Ptyxis, gnome-terminal, xfce4-terminal, kitty,
+  Alacritty, foot…; on Windows, Windows Terminal or a console window.
 - The **⌄** button next to **+** lists the shells installed on the system (from `/etc/shells`): pick one to
   open a terminal with it, or set it as the default under **Default Shell**.
   The choice is saved in `lieve.conf` (`[terminal] shell=`) and applies to every window.
@@ -316,8 +342,9 @@ The rest: sidebars and tabs a little darker than the editor, thin borders, slim 
 a single accent colour (active tab, Commit button, focused fields, counters); the active item in the activity
 bar sits on a rounded tile. Light themes work too.
 
-- Pick the accent colour with `[ui] accent=`: `system` (Plasma's), `lieve` (the burgundy of the icon)
-  or a `#rrggbb` colour.
+- Pick the accent colour with `[ui] accent=`: `system` (the desktop's: Plasma's, GNOME's, Windows'), `lieve`
+  (the burgundy of the icon) or a `#rrggbb` colour. With `[editor] theme=auto` the editor theme follows the
+  desktop's light or dark mode.
 - `[ui] theme=system` goes back to Plasma's colours for the window.
 - The terminal uses the same colours through a private Konsole profile
   (`~/.local/share/lieve/xdg/konsole/`): the Konsole app and your profiles are not touched.
@@ -445,6 +472,8 @@ Lieve puts together components written by others; the credit for the heavy lifti
   including the "VSCodium Dark" theme), [Konsole](https://invent.kde.org/utilities/konsole) (terminal),
   [KParts](https://invent.kde.org/frameworks/kparts), KXmlGui, KCoreAddons, KDBusAddons (single instance),
   KWindowSystem (window activation on Wayland). LGPL/GPL licences.
+- **MSYS2** ([msys2.org](https://www.msys2.org/), its developers and packagers): the Windows build uses its Qt,
+  KDE Frameworks and ripgrep packages, which the Windows zip bundles.
 - **The Qt Company and contributors**: [Qt 6](https://www.qt.io/). The Markdown preview uses Qt's Markdown
   support, built on [MD4C](https://github.com/mity/md4c) by Martin Mitáš (MIT).
 - **Andrew Gallant (BurntSushi)**: [ripgrep](https://github.com/BurntSushi/ripgrep), used for search and `Ctrl+P`.
