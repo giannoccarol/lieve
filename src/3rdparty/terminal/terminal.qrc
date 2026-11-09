@@ -1,0 +1,6 @@
+<!-- Lieve: the resource Qt Creator's CMakeLists.txt makes (qtc_add_resources). -->
+<RCC>
+    <qresource prefix="/terminal">
+        <file>images/passwordlock.png</file>
+    </qresource>
+</RCC>

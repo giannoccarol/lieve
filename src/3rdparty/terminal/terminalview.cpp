@@ -1,0 +1,1871 @@
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0+ OR GPL-3.0 WITH Qt-GPL-exception-1.0
+
+#include "terminalview.h"
+#include "boxdrawing.h"
+#include "glyphcache.h"
+#include "terminalsurface.h"
+
+
+#include <QApplication>
+#include <QCache>
+#include <QClipboard>
+#include <QDesktopServices>
+#include <QDeadlineTimer>
+#include <QElapsedTimer>
+#include <QGlyphRun>
+#include <QLoggingCategory>
+#include <QMenu>
+#include <QMimeData>
+#include <QPaintEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmapCache>
+#include <QRawFont>
+#include <QRegularExpression>
+#include <QScreen>
+#include <QScrollBar>
+#include <QStringList>
+#include <QTextItem>
+#include <QTextLayout>
+#include <QToolTip>
+#include <QUrl>
+
+#include <chrono>
+#include <utility>
+
+static Q_LOGGING_CATEGORY(terminalLog, "qtc.terminal", QtWarningMsg)
+static Q_LOGGING_CATEGORY(selectionLog, "qtc.terminal.selection", QtWarningMsg)
+static Q_LOGGING_CATEGORY(paintLog, "qtc.terminal.paint", QtWarningMsg)
+
+constexpr int resizeDebounceInterval = 20;
+constexpr int resizeMaxWait = 100;
+
+namespace TerminalSolution {
+
+using namespace std::chrono;
+using namespace std::chrono_literals;
+
+// Minimum time between two refreshes. (30fps)
+static constexpr milliseconds minRefreshInterval = 33ms;
+
+// How long after a size change an application may still be redrawing for it.
+// It has to cover the time a SIGWINCH takes to reach it and its answer to come
+// back, which over ssh or docker exec is far more than the resize debounce.
+static constexpr milliseconds resizeRedrawWindow = 1s;
+
+// vterm reports a width of zero for the second half of a wide character whose
+// first half has been overwritten. Such a cell still occupies the column it
+// was read from, so both the rectangle it is painted into and the number of
+// columns the paint loop advances by have to come from the same clamp.
+static int columnsOf(const TerminalCell &cell)
+{
+    return qMax(1, cell.width);
+}
+
+class TerminalViewPrivate
+{
+public:
+    TerminalViewPrivate()
+    {
+        m_cursorBlinkTimer.setInterval(750ms);
+        m_cursorBlinkTimer.setSingleShot(false);
+
+        // Coarse rounds up to the ~15.6ms Windows tick, shifts 5% elsewhere.
+        m_flushDelayTimer.setSingleShot(true);
+        m_flushDelayTimer.setTimerType(Qt::PreciseTimer);
+
+        m_updateTimer.setSingleShot(true);
+        m_updateTimer.setTimerType(Qt::PreciseTimer);
+
+        m_scrollTimer.setSingleShot(false);
+        m_scrollTimer.setInterval(500ms);
+    }
+
+    // Whether a size change may still be working its way through: one is
+    // applied to the surface after a debounce, and the application redraws for
+    // it after that, so the window system keeps asking for paints the whole way.
+    bool resizedRecently() const
+    {
+        return m_resizeDebounceTimer.isActive()
+               || (m_sinceSizeApplied.isValid()
+                   && m_sinceSizeApplied.durationElapsed() < resizeRedrawWindow);
+    }
+
+    std::optional<TerminalView::Selection> m_selection;
+    std::unique_ptr<TerminalSurface> m_surface;
+
+    bool m_pasteConfirmationOpen{false};
+    QStringList m_pendingPastes;
+
+    QSizeF m_cellSize;
+
+    bool m_ignoreScroll{false};
+
+    QString m_preEditString;
+
+    std::optional<TerminalView::LinkSelection> m_linkSelection;
+    // The cell a question still out with a provider was about, and the line it
+    // was asked with. The pointer moves on while a provider is looking, and a
+    // late answer belongs to the cell the reader was on when it was asked.
+    struct
+    {
+        int pos = -1;
+        QString line;
+    } m_linkQuestion;
+    // The answer for the line the pointer was last over. The pointer crosses
+    // the same line many times, and asking once per move would ask a provider
+    // per pixel. Keyed by the text, so a line the application has rewritten
+    // does not answer for what it says now.
+    struct
+    {
+        int lineStart = -1;
+        QString line;
+        QList<TerminalView::LineLink> links;
+    } m_lineLinks;
+
+    struct
+    {
+        QPoint start;
+        QPoint end;
+    } m_activeMouseSelect;
+
+    QTimer m_flushDelayTimer;
+
+    QTimer m_updateTimer;
+    std::optional<QRegion> m_updateRegion;
+    QDeadlineTimer m_sinceLastPaint;
+
+    // The last frame finished before a synchronized update began, held only
+    // for as long as that update lasts.
+    QPixmap m_heldFrame;
+
+    QTimer m_scrollTimer;
+    QTimer m_resizeDebounceTimer;
+    QElapsedTimer m_sinceSizeApplied;
+    int m_scrollDirection{0};
+
+    std::array<QColor, 20> m_currentColors;
+
+    system_clock::time_point m_lastFlush{system_clock::now()};
+    system_clock::time_point m_lastDoubleClick{system_clock::now()};
+    bool m_selectLineMode{false};
+    Cursor m_cursor;
+    QTimer m_cursorBlinkTimer;
+    bool m_cursorBlinkState{true};
+    bool m_allowBlinkingCursor{true};
+    bool m_allowMouseTracking{true};
+    bool m_passwordModeActive{false};
+
+    SurfaceIntegration *m_surfaceIntegration{nullptr};
+
+    std::function<void()> m_surfaceUpdater;
+};
+
+QString defaultFontFamily()
+{
+#ifdef Q_OS_DARWIN
+    return QLatin1String("Menlo");
+#elif defined(Q_OS_WIN)
+    return QLatin1String("Consolas");
+#else
+    return QLatin1String("Monospace");
+#endif
+}
+
+int defaultFontSize()
+{
+#ifdef Q_OS_DARWIN
+        return 12;
+#elif defined(Q_OS_WIN)
+    return 10;
+#else
+    return 9;
+#endif
+}
+
+TerminalView::TerminalView(QWidget *parent)
+    : QAbstractScrollArea(parent)
+    , d(std::make_unique<TerminalViewPrivate>())
+{
+    setupSurface();
+    setFont(QFont(defaultFontFamily(), defaultFontSize()));
+
+    connect(&d->m_cursorBlinkTimer, &QTimer::timeout, this, [this] {
+        if (hasFocus())
+            d->m_cursorBlinkState = !d->m_cursorBlinkState;
+        else
+            d->m_cursorBlinkState = true;
+        updateViewportRect(gridToViewport(QRect{d->m_cursor.position, d->m_cursor.position}));
+    });
+
+    setAttribute(Qt::WA_InputMethodEnabled);
+    setAttribute(Qt::WA_MouseTracking);
+    setAcceptDrops(true);
+
+    setCursor(Qt::IBeamCursor);
+
+    setViewportMargins(1, 1, 1, 1);
+
+    setFocus();
+    setFocusPolicy(Qt::StrongFocus);
+
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+
+    d->m_resizeDebounceTimer.setInterval(resizeDebounceInterval);
+    d->m_resizeDebounceTimer.setSingleShot(true);
+    connect(&d->m_resizeDebounceTimer, &QTimer::timeout, this, [this] { applyDebouncedSize(); });
+
+    connect(&d->m_flushDelayTimer, &QTimer::timeout, this, [this] { flushVTerm(true); });
+    connect(&d->m_updateTimer, &QTimer::timeout, this, &TerminalView::scheduleViewportUpdate);
+
+    connect(&d->m_scrollTimer, &QTimer::timeout, this, [this] {
+        if (d->m_scrollDirection < 0)
+            verticalScrollBar()->triggerAction(QAbstractSlider::SliderSingleStepSub);
+        else if (d->m_scrollDirection > 0)
+            verticalScrollBar()->triggerAction(QAbstractSlider::SliderSingleStepAdd);
+    });
+}
+
+TerminalView::~TerminalView() = default;
+
+void TerminalView::setSurfaceIntegration(SurfaceIntegration *surfaceIntegration)
+{
+    d->m_surfaceIntegration = surfaceIntegration;
+    if (d->m_surface)
+        d->m_surface->setSurfaceIntegration(d->m_surfaceIntegration);
+}
+
+TerminalSurface *TerminalView::surface() const
+{
+    return d->m_surface.get();
+}
+
+/*!
+    Sets an \a updater function to call when the surface changes.
+    If \a updater is valid, it also directly calls it once.
+*/
+void TerminalView::setSurfaceUpdater(const std::function<void()> &updater)
+{
+    d->m_surfaceUpdater = updater;
+    if (updater)
+        updater();
+}
+
+std::function<void()> TerminalView::surfaceUpdater() const
+{
+    return d->m_surfaceUpdater;
+}
+
+void TerminalView::setupSurface()
+{
+    // The timeout that would end a synchronized update belongs to the surface
+    // being replaced, so a frame held for one it opened has nothing left to
+    // end it, and would be painted over the new surface for good.
+    d->m_heldFrame = QPixmap();
+
+    d->m_surface = std::make_unique<TerminalSurface>(QSize{80, 60});
+    d->m_surface->setCellSize(d->m_cellSize * devicePixelRatioF());
+    connect(d->m_surface.get(), &TerminalSurface::cleared, this, [this] {
+        // A selection is a pair of positions counted from the top of the
+        // scrollback, so dropping the scrollback moves every row they name.
+        // The overlap test on invalidated cannot catch this: clearing reports
+        // a size change, not a damaged rectangle, and the rows the selection
+        // names are still inside the new grid - they just hold other text now.
+        setSelection(std::nullopt);
+        clearLinkSelection();
+        emit cleared();
+    });
+
+    if (d->m_surfaceIntegration)
+        d->m_surface->setSurfaceIntegration(d->m_surfaceIntegration);
+
+    d->m_surface->setWriteToPty([this](const QByteArray &data) { return writeToPty(data); });
+    d->m_surface->setColorProvider(
+        [this](ColorIndex colorIndex) { return toQColor(int(colorIndex)); });
+
+    connect(d->m_surface.get(), &TerminalSurface::fullSizeChanged, this, [this] {
+        updateScrollBars();
+    });
+    connect(d->m_surface.get(), &TerminalSurface::invalidated, this, [this](const QRect &rect) {
+        if (d->m_selection) {
+            // end is one past the last selected cell, and a line selection
+            // puts it on the first cell of the next row, so the row it names
+            // is not part of the selection.
+            const int firstRow = d->m_surface->posToGrid(d->m_selection->start).y();
+            const int lastRow = d->m_surface->posToGrid(d->m_selection->end - 1).y();
+            if (rect.top() <= lastRow && rect.bottom() >= firstRow)
+                setSelection(std::nullopt);
+        }
+        updateViewportRect(gridToViewport(rect));
+        if (verticalScrollBar()->value() == verticalScrollBar()->maximum())
+            verticalScrollBar()->setValue(d->m_surface->fullSize().height());
+    });
+    connect(
+        d->m_surface.get(),
+        &TerminalSurface::cursorChanged,
+        this,
+        [this](const Cursor &oldCursor, const Cursor &newCursor) {
+            int startX = oldCursor.position.x();
+            int endX = newCursor.position.x();
+
+            if (startX > endX)
+                std::swap(startX, endX);
+
+            int startY = oldCursor.position.y();
+            int endY = newCursor.position.y();
+            if (startY > endY)
+                std::swap(startY, endY);
+
+            d->m_cursor = newCursor;
+
+            updateViewportRect(gridToViewport(QRect{QPoint{startX, startY}, QPoint{endX, endY}}));
+            configBlinkTimer();
+        });
+    connect(d->m_surface.get(), &TerminalSurface::altscreenChanged, this, [this] {
+        updateScrollBars();
+        if (!setSelection(std::nullopt))
+            updateViewport();
+    });
+    connect(d->m_surface.get(),
+            &TerminalSurface::synchronizedUpdateChanged,
+            this,
+            [this](bool active) {
+                if (active) {
+                    // Only a paint the window system forces can show half a
+                    // frame, and what forces one here is a size change: the
+                    // application redraws because of it, and the drag it came
+                    // from is still going. Keeping a frame for every update
+                    // instead would render the whole viewport once more per
+                    // frame, for an answer nothing ever asks for. The first
+                    // update of a drag that begins in the middle of one has
+                    // nothing kept, but the redraw the drag causes opens the
+                    // next one, and that keeps its frame.
+                    if (!viewport()->isVisible() || !d->resizedRecently())
+                        return;
+
+                    // Nothing of the update has been parsed yet - the mode is
+                    // set by the first thing in it - so this is the last whole
+                    // frame. Grabbing it paints the viewport, which would
+                    // otherwise start the interval the next repaint is spaced
+                    // from and hold the finished frame back for one it never
+                    // spent.
+                    const QDeadlineTimer sinceLastPaint = d->m_sinceLastPaint;
+                    d->m_heldFrame = viewport()->grab();
+                    d->m_sinceLastPaint = sinceLastPaint;
+                    return;
+                }
+
+                d->m_heldFrame = QPixmap();
+
+                // The damage the surface reports next was measured against a
+                // scrollback that has since moved underneath it, so repaint
+                // all of what is on screen rather than trust it - one paint,
+                // which is the point.
+                updateViewport();
+            });
+    connect(d->m_surface.get(), &TerminalSurface::unscroll, this, [this] {
+        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+    });
+
+    if (d->m_surfaceUpdater)
+        d->m_surfaceUpdater();
+    updateScrollBars();
+}
+
+void TerminalView::setAllowBlinkingCursor(bool allow)
+{
+    d->m_allowBlinkingCursor = allow;
+}
+bool TerminalView::allowBlinkingCursor() const
+{
+    return d->m_allowBlinkingCursor;
+}
+
+void TerminalView::configBlinkTimer()
+{
+    bool shouldRun = d->m_cursor.visible && d->m_cursor.blink && hasFocus()
+                     && d->m_allowBlinkingCursor;
+    if (shouldRun != d->m_cursorBlinkTimer.isActive()) {
+        if (shouldRun)
+            d->m_cursorBlinkTimer.start();
+        else
+            d->m_cursorBlinkTimer.stop();
+    }
+}
+
+QColor TerminalView::toQColor(std::variant<int, QColor> color) const
+{
+    if (std::holds_alternative<int>(color)) {
+        int idx = std::get<int>(color);
+        if (idx >= 0 && idx < 18)
+            return d->m_currentColors[idx];
+
+        return d->m_currentColors[(int) WidgetColorIdx::Background];
+    }
+    return std::get<QColor>(color);
+}
+
+void TerminalView::setColors(const std::array<QColor, 20> &newColors)
+{
+    if (d->m_currentColors == newColors)
+        return;
+
+    d->m_currentColors = newColors;
+
+    updateViewport();
+    update();
+}
+
+void TerminalView::setPasswordMode(bool passwordMode)
+{
+    if (passwordMode != d->m_passwordModeActive) {
+        d->m_passwordModeActive = passwordMode;
+        updateViewport();
+    }
+}
+
+void TerminalView::enableMouseTracking(bool enable)
+{
+    d->m_allowMouseTracking = enable;
+}
+
+void TerminalView::setFont(const QFont &font)
+{
+    QAbstractScrollArea::setFont(font);
+
+    QFontMetricsF qfm{font};
+    qCInfo(terminalLog) << font.family() << font.pointSize() << qfm.averageCharWidth()
+                        << qfm.maxWidth() << viewport()->size();
+
+    // A whole number of device pixels per cell. Otherwise every column starts at a
+    // different sub-pixel phase and the characters that should tile get seams.
+    const qreal dpr = devicePixelRatioF();
+    const qreal onePixel = 1.0 / dpr;
+    d->m_cellSize = {qMax(onePixel, snapToDevicePixel(qfm.averageCharWidth(), dpr)),
+                     qMax(onePixel, qCeil(qfm.height() * dpr) / dpr)};
+
+    // In device pixels: an application is told how much room it has so that it
+    // draws an image at the resolution of the screen, and the image is painted
+    // back into the cells it covers, which are these cells scaled by the ratio.
+    if (d->m_surface)
+        d->m_surface->setCellSize(d->m_cellSize * dpr);
+
+    QAbstractScrollArea::setFont(font);
+
+    applySizeChange();
+}
+
+void TerminalView::copyToClipboard()
+{
+    if (!d->m_selection.has_value())
+        return;
+
+    QString text = textFromSelection();
+
+    qCDebug(selectionLog) << "Copied to clipboard: " << text;
+
+    setClipboard(text);
+
+    clearSelection();
+}
+
+void TerminalView::pasteFromClipboard()
+{
+    paste(QApplication::clipboard()->text(QClipboard::Clipboard));
+}
+
+static bool containsControlCharacters(const QString &text)
+{
+    for (const QChar ch : text) {
+        const char16_t c = ch.unicode();
+        if ((c < u' ' && c != u'\t') || (c >= 0x7f && c <= 0x9f))
+            return true;
+    }
+    return false;
+}
+
+void TerminalView::paste(const QString &text)
+{
+    if (text.isEmpty())
+        return;
+
+    // A confirmation is answered later. Anything pasted while one is open
+    // waits for it, so that text the reader is still being asked about cannot
+    // arrive at the pty after text they pasted afterwards.
+    if (d->m_pasteConfirmationOpen) {
+        d->m_pendingPastes.append(text);
+        return;
+    }
+
+    if (d->m_surface->isBracketedPasteEnabled() || !containsControlCharacters(text)) {
+        d->m_surface->pasteFromClipboard(text);
+        return;
+    }
+
+    d->m_pasteConfirmationOpen = true;
+    confirmUnsafePaste(text, this, [this, text](bool confirmed) {
+        d->m_pasteConfirmationOpen = false;
+        if (confirmed)
+            d->m_surface->pasteFromClipboard(text);
+
+        // Each of these takes the branch it would have taken on its own; one
+        // that needs a confirmation of its own opens it and holds the rest.
+        const QStringList waiting = std::exchange(d->m_pendingPastes, {});
+        for (const QString &pending : waiting)
+            paste(pending);
+    });
+}
+
+void TerminalView::copyLinkToClipboard()
+{
+    if (d->m_linkSelection)
+        setClipboard(d->m_linkSelection->link.text);
+}
+
+std::optional<TerminalView::Selection> TerminalView::selection() const
+{
+    return d->m_selection;
+}
+
+void TerminalView::clearSelection()
+{
+    setSelection(std::nullopt);
+    //d->m_surface->sendKey(Qt::Key_Escape);
+}
+
+void TerminalView::selectAll()
+{
+    setSelection(Selection{0, d->m_surface->fullSize().width() * d->m_surface->fullSize().height()});
+}
+
+void TerminalView::zoomIn()
+{
+    QFont f = font();
+    f.setPointSize(f.pointSize() + 1);
+    setFont(f);
+}
+
+void TerminalView::zoomOut()
+{
+    QFont f = font();
+    f.setPointSize(qMax(f.pointSize() - 1, 1));
+    setFont(f);
+}
+
+void TerminalView::moveCursorWordLeft()
+{
+    writeToPty("\x1b\x62");
+}
+
+void TerminalView::moveCursorWordRight()
+{
+    writeToPty("\x1b\x66");
+}
+
+void TerminalView::clearContents()
+{
+    d->m_surface->clearAll();
+}
+
+void TerminalView::writeToTerminal(const QByteArray &data, bool forceFlush)
+{
+    d->m_surface->dataFromPty(data);
+    flushVTerm(forceFlush);
+}
+
+void TerminalView::flushVTerm(bool force)
+{
+    const system_clock::time_point now = system_clock::now();
+    const milliseconds timeSinceLastFlush = duration_cast<milliseconds>(now - d->m_lastFlush);
+
+    const bool shouldFlushImmediately = timeSinceLastFlush > minRefreshInterval;
+    if (force || shouldFlushImmediately) {
+        if (d->m_flushDelayTimer.isActive())
+            d->m_flushDelayTimer.stop();
+
+        d->m_lastFlush = now;
+        d->m_surface->flush();
+        return;
+    }
+
+    if (!d->m_flushDelayTimer.isActive()) {
+        const milliseconds timeToNextFlush = (minRefreshInterval - timeSinceLastFlush);
+        d->m_flushDelayTimer.start(timeToNextFlush.count());
+    }
+}
+
+QString TerminalView::textFromSelection() const
+{
+    if (!d->m_selection)
+        return {};
+
+    if (d->m_selection->start == d->m_selection->end)
+        return {};
+
+    CellIterator it = d->m_surface->iteratorAt(d->m_selection->start);
+    CellIterator end = d->m_surface->iteratorAt(d->m_selection->end);
+
+    if (it.position() > end.position()) {
+        qCWarning(selectionLog) << "Invalid selection: start >= end";
+        return {};
+    }
+
+    std::u32string s;
+    bool previousWasZero = false;
+    for (; it != end; ++it) {
+        if (it.gridPos().x() == 0 && !s.empty() && previousWasZero)
+            s += U'\n';
+
+        if (*it != 0) {
+            previousWasZero = false;
+            s += *it;
+        } else {
+            previousWasZero = true;
+        }
+    }
+
+    return QString::fromUcs4(s.data(), static_cast<int>(s.size()));
+}
+
+bool TerminalView::setSelection(const std::optional<Selection> &selection, bool scroll)
+{
+    qCDebug(selectionLog) << "setSelection" << selection.has_value();
+    if (selection.has_value())
+        qCDebug(selectionLog) << "start:" << selection->start << "end:" << selection->end
+                              << "final:" << selection->final;
+
+    if (selectionLog().isDebugEnabled())
+        updateViewport();
+
+    if (selection == d->m_selection)
+        return false;
+
+    d->m_selection = selection;
+    selectionChanged(d->m_selection);
+
+    if (d->m_selection && d->m_selection->final && scroll) {
+        QPoint start = d->m_surface->posToGrid(d->m_selection->start);
+        QPoint end = d->m_surface->posToGrid(d->m_selection->end);
+        QRect viewRect = gridToViewport(QRect{start, end});
+        if (viewRect.y() >= viewport()->height() || viewRect.y() < 0) {
+            // Selection is outside of the viewport, scroll to it.
+            verticalScrollBar()->setValue(start.y());
+        }
+    }
+
+    if (!selectionLog().isDebugEnabled())
+        updateViewport();
+
+    return true;
+}
+
+void TerminalView::restart()
+{
+    setupSurface();
+    applySizeChange();
+}
+
+QPoint TerminalView::viewportToGlobal(QPoint p) const
+{
+    int y = p.y() - topMargin();
+    const double offset = verticalScrollBar()->value() * d->m_cellSize.height();
+    y += offset;
+
+    return {p.x(), y};
+}
+
+QPoint TerminalView::globalToViewport(QPoint p) const
+{
+    int y = p.y() + topMargin();
+    const double offset = verticalScrollBar()->value() * d->m_cellSize.height();
+    y -= offset;
+
+    return {p.x(), y};
+}
+
+QPoint TerminalView::globalToGrid(QPointF p) const
+{
+    return QPoint(p.x() / d->m_cellSize.width(), p.y() / d->m_cellSize.height());
+}
+
+QPointF TerminalView::gridToGlobal(QPoint p, bool bottom, bool right) const
+{
+    QPointF result = QPointF(p.x() * d->m_cellSize.width(), p.y() * d->m_cellSize.height());
+    if (bottom || right)
+        result += {right ? d->m_cellSize.width() : 0, bottom ? d->m_cellSize.height() : 0};
+    return result;
+}
+
+qreal TerminalView::topMargin() const
+{
+    return viewport()->size().height()
+           - (d->m_surface->liveSize().height() * d->m_cellSize.height());
+}
+
+static QPixmap generateWavyPixmap(qreal maxRadius, const QPen &pen)
+{
+    const qreal radiusBase = qMax(qreal(1), maxRadius);
+    const qreal pWidth = pen.widthF();
+
+    const QString key = QLatin1String("WaveUnderline-") % pen.color().name()
+                        % QString::number(int(radiusBase), 16) % QString::number(int(pWidth), 16);
+
+    QPixmap pixmap;
+    if (QPixmapCache::find(key, &pixmap))
+        return pixmap;
+
+    const qreal halfPeriod = qMax(qreal(2), qreal(radiusBase * 1.61803399)); // the golden ratio
+    const int width = qCeil(100 / (2 * halfPeriod)) * (2 * halfPeriod);
+    const qreal radius = qFloor(radiusBase * 2) / 2.;
+
+    QPainterPath path;
+
+    qreal xs = 0;
+    qreal ys = radius;
+
+    while (xs < width) {
+        xs += halfPeriod;
+        ys = -ys;
+        path.quadTo(xs - halfPeriod / 2, ys, xs, 0);
+    }
+
+    pixmap = QPixmap(width, radius * 2);
+    pixmap.fill(Qt::transparent);
+    {
+        QPen wavePen = pen;
+        wavePen.setCapStyle(Qt::SquareCap);
+
+        // This is to protect against making the line too fat, as happens on macOS
+        // due to it having a rather thick width for the regular underline.
+        const qreal maxPenWidth = .8 * radius;
+        if (wavePen.widthF() > maxPenWidth)
+            wavePen.setWidthF(maxPenWidth);
+
+        QPainter imgPainter(&pixmap);
+        imgPainter.setPen(wavePen);
+        imgPainter.setRenderHint(QPainter::Antialiasing);
+        imgPainter.translate(0, radius);
+        imgPainter.drawPath(path);
+    }
+
+    QPixmapCache::insert(key, pixmap);
+
+    return pixmap;
+}
+
+// Copied from qpainter.cpp
+static void drawTextItemDecoration(QPainter &painter,
+                                   const QPointF &pos,
+                                   QTextCharFormat::UnderlineStyle underlineStyle,
+                                   QTextItem::RenderFlags flags,
+                                   qreal width,
+                                   const QColor &underlineColor,
+                                   const QRawFont &font)
+{
+    if (underlineStyle == QTextCharFormat::NoUnderline
+        && !(flags & (QTextItem::StrikeOut | QTextItem::Overline)))
+        return;
+
+    const QPen oldPen = painter.pen();
+    const QBrush oldBrush = painter.brush();
+    painter.setBrush(Qt::NoBrush);
+    QPen pen = oldPen;
+    pen.setStyle(Qt::SolidLine);
+    pen.setWidthF(font.lineThickness());
+    pen.setCapStyle(Qt::FlatCap);
+
+    QLineF line(qFloor(pos.x()), pos.y(), qFloor(pos.x() + width), pos.y());
+
+    const qreal underlineOffset = font.underlinePosition();
+
+    /*if (underlineStyle == QTextCharFormat::SpellCheckUnderline) {
+        QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme();
+        if (theme)
+            underlineStyle = QTextCharFormat::UnderlineStyle(
+                theme->themeHint(QPlatformTheme::SpellCheckUnderlineStyle).toInt());
+        if (underlineStyle == QTextCharFormat::SpellCheckUnderline) // still not resolved
+            underlineStyle = QTextCharFormat::WaveUnderline;
+    }*/
+
+    if (underlineStyle == QTextCharFormat::WaveUnderline) {
+        painter.save();
+        painter.translate(0, pos.y() + 1);
+        qreal maxHeight = font.descent() - qreal(1);
+
+        QColor uc = underlineColor;
+        if (uc.isValid())
+            pen.setColor(uc);
+
+        // Adapt wave to underlineOffset or pen width, whatever is larger, to make it work on all platforms
+        const QPixmap wave = generateWavyPixmap(qMin(qMax(underlineOffset, pen.widthF()),
+                                                     maxHeight / qreal(2.)),
+                                                pen);
+        const int descent = qFloor(maxHeight);
+
+        painter.setBrushOrigin(painter.brushOrigin().x(), 0);
+        painter.fillRect(pos.x(), 0, qCeil(width), qMin(wave.height(), descent), wave);
+        painter.restore();
+    } else if (underlineStyle != QTextCharFormat::NoUnderline) {
+        // Deliberately ceil the offset to avoid the underline coming too close to
+        // the text above it, but limit it to stay within descent.
+        qreal adjustedUnderlineOffset = std::ceil(underlineOffset) + 0.5;
+        if (underlineOffset <= font.descent())
+            adjustedUnderlineOffset = qMin(adjustedUnderlineOffset, font.descent() - qreal(0.5));
+        const qreal underlinePos = pos.y() + adjustedUnderlineOffset;
+        QColor uc = underlineColor;
+        if (uc.isValid())
+            pen.setColor(uc);
+
+        pen.setStyle((Qt::PenStyle)(underlineStyle));
+        painter.setPen(pen);
+        QLineF underline(line.x1(), underlinePos, line.x2(), underlinePos);
+        painter.drawLine(underline);
+    }
+
+    pen.setStyle(Qt::SolidLine);
+    pen.setColor(oldPen.color());
+
+    if (flags & QTextItem::StrikeOut) {
+        QLineF strikeOutLine = line;
+        strikeOutLine.translate(0., -font.ascent() / 3.);
+        QColor uc = underlineColor;
+        if (uc.isValid())
+            pen.setColor(uc);
+        painter.setPen(pen);
+        painter.drawLine(strikeOutLine);
+    }
+
+    if (flags & QTextItem::Overline) {
+        QLineF overline = line;
+        overline.translate(0., -font.ascent());
+        QColor uc = underlineColor;
+        if (uc.isValid())
+            pen.setColor(uc);
+        painter.setPen(pen);
+        painter.drawLine(overline);
+    }
+
+    painter.setPen(oldPen);
+    painter.setBrush(oldBrush);
+}
+
+// A cell that is painted by hand has no glyph run to take the decoration metrics
+// from, and QRawFont::fromFont() resolves the font engine on every call, so keep
+// the handful of fonts a terminal paints with around.
+static QRawFont rawFontFor(const QFont &font)
+{
+    static QCache<QFont, QRawFont> cache(16);
+
+    if (const QRawFont *cached = cache.object(font))
+        return *cached;
+
+    const QRawFont rawFont = QRawFont::fromFont(font);
+    cache.insert(font, new QRawFont(rawFont));
+    return rawFont;
+}
+
+bool TerminalView::paintFindMatches(QPainter &p,
+                                    QList<SearchHit>::const_iterator &it,
+                                    const QRectF &cellRect,
+                                    const QPoint gridPos) const
+{
+    if (it == searchHits().constEnd())
+        return false;
+
+    const int pos = d->m_surface->gridToPos(gridPos);
+    while (it != searchHits().constEnd()) {
+        if (pos < it->start)
+            return false;
+
+        if (pos >= it->end) {
+            ++it;
+            continue;
+        }
+        break;
+    }
+
+    if (it == searchHits().constEnd())
+        return false;
+
+    p.fillRect(cellRect, d->m_currentColors[(size_t) WidgetColorIdx::FindMatch]);
+
+    return true;
+}
+
+bool TerminalView::paintSelection(QPainter &p, const QRectF &cellRect, const QPoint gridPos) const
+{
+    bool isInSelection = false;
+    const int pos = d->m_surface->gridToPos(gridPos);
+
+    if (d->m_selection)
+        isInSelection = pos >= d->m_selection->start && pos < d->m_selection->end;
+
+    if (isInSelection)
+        p.fillRect(cellRect, d->m_currentColors[(size_t) WidgetColorIdx::Selection]);
+
+    return isInSelection;
+}
+
+int TerminalView::paintCell(QPainter &p,
+                            const QRectF &cellRect,
+                            QPoint gridPos,
+                            const TerminalCell &cell,
+                            QFont &f,
+                            QList<SearchHit>::const_iterator &searchIt) const
+{
+    bool paintBackground = !paintSelection(p, cellRect, gridPos)
+                           && !paintFindMatches(p, searchIt, cellRect, gridPos);
+
+    // An image cell carries neither text nor a background of its own, the image
+    // is painted over the whole run of them once the cells are done.
+    if (cell.image)
+        return cell.width;
+
+    bool isDefaultBg = std::holds_alternative<int>(cell.backgroundColor)
+                       && std::get<int>(cell.backgroundColor) == 17;
+
+    if (paintBackground && !isDefaultBg)
+        p.fillRect(cellRect, toQColor(cell.backgroundColor));
+
+    p.setPen(toQColor(cell.foregroundColor));
+
+    f.setBold(cell.bold);
+    f.setItalic(cell.italic);
+
+    if (!cell.text.isEmpty()) {
+        // Box drawing and block elements are painted by hand: they have to tile, which
+        // font glyphs cannot guarantee. The font's bold and italic do not reach them;
+        // the geometry is the same at any weight, as in other terminals.
+        const bool boxDrawingPainted = cell.text.size() == 1
+                                       && paintBoxDrawingCharacter(p,
+                                                                   cellRect,
+                                                                   cell.text.at(0).unicode(),
+                                                                   devicePixelRatioF());
+
+        const auto r = boxDrawingPainted ? nullptr : GlyphCache::instance().get(f, cell.text);
+
+        QPointF brOffset;
+        if (r) {
+            const auto brSize = r->boundingRect().size();
+            if (brSize.width() > cellRect.size().width())
+                brOffset.setX(-(brSize.width() - cellRect.size().width()) / 2.0);
+            if (brSize.height() > cellRect.size().height())
+                brOffset.setY(-(brSize.height() - cellRect.size().height()) / 2.0);
+        }
+
+        const qreal dpr = devicePixelRatioF();
+        QPointF finalPos = cellRect.topLeft() + brOffset;
+        finalPos = {snapToDevicePixel(finalPos.x(), dpr), snapToDevicePixel(finalPos.y(), dpr)};
+
+        if (r)
+            p.drawGlyphRun(finalPos, *r);
+
+        bool tempLink = false;
+        if (d->m_linkSelection) {
+            int chPos = d->m_surface->gridToPos(gridPos);
+            tempLink = chPos >= d->m_linkSelection->start && chPos < d->m_linkSelection->end;
+        }
+        if (cell.underlineStyle != QTextCharFormat::NoUnderline || cell.strikeOut || tempLink) {
+            // Hand painted cells have no glyph run, but they carry the same
+            // decorations, so take the metrics from the font itself.
+            const QRawFont rawFont = r ? r->rawFont() : rawFontFor(f);
+            // Only StrikeOut and Overline are read from the flags, the
+            // underline comes from the style argument below.
+            QTextItem::RenderFlags flags;
+            flags.setFlag(QTextItem::StrikeOut, cell.strikeOut);
+            finalPos.setY(finalPos.y() + rawFont.ascent());
+            drawTextItemDecoration(p,
+                                   finalPos,
+                                   tempLink ? QTextCharFormat::DashUnderline
+                                            : cell.underlineStyle,
+                                   flags,
+                                   cellRect.size().width(),
+                                   {},
+                                   rawFont);
+        }
+    }
+
+    return columnsOf(cell);
+}
+
+void TerminalView::paintCursor(QPainter &p) const
+{
+    auto cursor = d->m_surface->cursor();
+
+    // The same clamp the paint loop applies through columnsOf, for the same
+    // reason: a cell of width zero - the trailing half of a wide character
+    // whose first half was overwritten, or a fetch that failed - still
+    // occupies the column the cursor is in, and a rectangle spanning no
+    // columns draws neither a cursor nor the password lock.
+    const int cursorCellWidth = qMax(1,
+                                     d->m_surface->cellWidthAt(cursor.position.x(),
+                                                               cursor.position.y()));
+
+    if (!d->m_preEditString.isEmpty()) {
+        cursor.shape = Cursor::Shape::Underline;
+    } else if (d->m_passwordModeActive) {
+        QRectF cursorRect = QRectF(gridToGlobal(cursor.position),
+                                   gridToGlobal({cursor.position.x() + cursorCellWidth,
+                                                 cursor.position.y()},
+                                                true))
+                                .toAlignedRect();
+
+        const qreal dpr = p.device()->devicePixelRatioF();
+        const QString key = QString("terminalpasswordlock-")
+                            % QString::number(cursorRect.size().height())
+                            % "@" % QString::number(dpr);
+        QPixmap px;
+        if (!QPixmapCache::find(key, &px)) {
+            const QPixmap lock(":/terminal/images/passwordlock.png");
+            px = lock.scaledToHeight(cursorRect.size().height() * dpr, Qt::SmoothTransformation);
+            px.setDevicePixelRatio(dpr);
+            QPixmapCache::insert(key, px);
+        }
+
+        p.drawPixmap(cursorRect.topLeft(), px);
+
+        return;
+    }
+    const bool blinkState = !cursor.blink || d->m_cursorBlinkState || !d->m_allowBlinkingCursor
+                            || !d->m_cursorBlinkTimer.isActive();
+
+    if (cursor.visible && blinkState) {
+        QRectF cursorRect = QRectF(gridToGlobal(cursor.position),
+                                   gridToGlobal({cursor.position.x() + cursorCellWidth,
+                                                 cursor.position.y()},
+                                                true))
+                                .toAlignedRect();
+
+        cursorRect.adjust(1, 1, -1, -1);
+
+        QPen pen(Qt::white, 0, Qt::SolidLine);
+        p.setPen(pen);
+
+        if (hasFocus()) {
+            QPainter::CompositionMode oldMode = p.compositionMode();
+            p.setCompositionMode(QPainter::RasterOp_NotDestination);
+            switch (cursor.shape) {
+            case Cursor::Shape::Block:
+                p.fillRect(cursorRect, p.pen().brush());
+                break;
+            case Cursor::Shape::Underline:
+                p.drawLine(cursorRect.bottomLeft(), cursorRect.bottomRight());
+                break;
+            case Cursor::Shape::LeftBar:
+                p.drawLine(cursorRect.topLeft(), cursorRect.bottomLeft());
+                break;
+            }
+            p.setCompositionMode(oldMode);
+        } else {
+            p.drawRect(cursorRect);
+        }
+    }
+}
+
+void TerminalView::paintPreedit(QPainter &p) const
+{
+    auto cursor = d->m_surface->cursor();
+    if (!d->m_preEditString.isEmpty()) {
+        QRectF rect = QRectF(gridToGlobal(cursor.position),
+                             gridToGlobal({cursor.position.x(), cursor.position.y()}, true, true));
+
+        rect.setWidth(viewport()->width() - rect.x());
+
+        p.setPen(toQColor((int) WidgetColorIdx::Foreground));
+        QFont f = font();
+        f.setUnderline(true);
+        p.setFont(f);
+        p.drawText(rect, Qt::TextDontClip | Qt::TextWrapAnywhere, d->m_preEditString);
+    }
+}
+
+void TerminalView::paintCells(QPainter &p, QPaintEvent *event) const
+{
+    QFont f = font();
+
+    const int scrollOffset = verticalScrollBar()->value();
+
+    const int maxRow = d->m_surface->fullSize().height();
+    const int startRow = qFloor((qreal) event->rect().y() / d->m_cellSize.height()) + scrollOffset;
+    const int endRow = qMin(maxRow,
+                            qCeil((event->rect().y() + event->rect().height())
+                                  / d->m_cellSize.height())
+                                + scrollOffset);
+
+    QList<SearchHit>::const_iterator searchIt
+        = std::lower_bound(searchHits().constBegin(),
+                           searchHits().constEnd(),
+                           startRow,
+                           [this](const SearchHit &hit, int value) {
+                               return d->m_surface->posToGrid(hit.start).y() < value;
+                           });
+
+    const auto continuesRun = [](const ImageRun &run, quint32 tag, QPoint gridPos) {
+        return gridPos.y() == run.start.y() && gridPos.x() == run.start.x() + run.count
+               && ImageCell::id(tag) == ImageCell::id(run.tag)
+               && ImageCell::row(tag) == ImageCell::row(run.tag)
+               && ImageCell::column(tag) == ImageCell::column(run.tag) + run.count;
+    };
+
+    QList<ImageRun> imageRuns;
+
+    for (int cellY = startRow; cellY < endRow; ++cellY) {
+        for (int cellX = 0; cellX < d->m_surface->liveSize().width();) {
+            const auto cell = d->m_surface->fetchCell(cellX, cellY);
+            const int columns = columnsOf(cell);
+
+            QRectF cellRect(gridToGlobal({cellX, cellY}),
+                            QSizeF{d->m_cellSize.width() * columns, d->m_cellSize.height()});
+
+            if (cell.image) {
+                const QPoint gridPos{cellX, cellY};
+                if (!imageRuns.isEmpty() && continuesRun(imageRuns.last(), cell.image, gridPos))
+                    ++imageRuns.last().count;
+                else
+                    imageRuns.append(ImageRun{cell.image, gridPos, 1});
+            }
+
+            cellX += paintCell(p, cellRect, {cellX, cellY}, cell, f, searchIt);
+        }
+    }
+
+    paintImages(p, imageRuns);
+}
+
+void TerminalView::paintImages(QPainter &p, const QList<ImageRun> &runs) const
+{
+    if (runs.isEmpty())
+        return;
+
+    const bool smooth = p.testRenderHint(QPainter::SmoothPixmapTransform);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    for (const ImageRun &run : runs) {
+        const std::optional<ImageTile> tile = d->m_surface->imageTile(run.tag);
+        if (!tile)
+            continue;
+
+        QRectF source = tile->source;
+        source.setWidth(source.width() * run.count);
+
+        QRectF target{gridToGlobal(run.start),
+                      QSizeF{d->m_cellSize.width() * run.count, d->m_cellSize.height()}};
+
+        // The cells along the right and bottom edge of an image reach past it
+        const QRectF bounds{QPointF{}, QSizeF{tile->image.size()}};
+        const QRectF available = source.intersected(bounds);
+        if (available.isEmpty())
+            continue;
+
+        if (available != source) {
+            target.setWidth(target.width() * available.width() / source.width());
+            target.setHeight(target.height() * available.height() / source.height());
+        }
+
+        p.drawImage(target, tile->image, available);
+
+        // The selection colour is translucent and went on before the image,
+        // which has covered it, so the selected cells take it again on top.
+        for (int cell = 0; cell < run.count; ++cell) {
+            const QPoint gridPos{run.start.x() + cell, run.start.y()};
+            paintSelection(p, QRectF(gridToGlobal(gridPos), d->m_cellSize), gridPos);
+        }
+    }
+
+    p.setRenderHint(QPainter::SmoothPixmapTransform, smooth);
+}
+
+void TerminalView::paintDebugSelection(QPainter &p, const Selection &selection) const
+{
+    auto s = globalToViewport(gridToGlobal(d->m_surface->posToGrid(selection.start)).toPoint());
+    const auto e = globalToViewport(
+        gridToGlobal(d->m_surface->posToGrid(selection.end), true).toPoint());
+
+    p.setPen(QPen(Qt::green, 1, Qt::DashLine));
+    p.drawLine(s.x(), 0, s.x(), height());
+    p.drawLine(0, s.y(), width(), s.y());
+
+    p.setPen(QPen(Qt::red, 1, Qt::DashLine));
+
+    p.drawLine(e.x(), 0, e.x(), height());
+    p.drawLine(0, e.y(), width(), e.y());
+}
+
+void TerminalView::paintEvent(QPaintEvent *event)
+{
+    QElapsedTimer t;
+    t.start();
+    event->accept();
+
+    // A synchronized update suppresses the repaints the terminal asks for, but
+    // not the ones the window system asks for, and a resize asks for them
+    // while the application is still composing the frame it resized into. The
+    // frame finished before the update began is kept for exactly that, so what
+    // a reader sees stays whole. Any other forced paint - an expose, a tab
+    // brought to the front - gets it too while it is kept, and otherwise paints
+    // the cells as they are, which is what it would have shown without the
+    // mode.
+    if (!d->m_heldFrame.isNull()) {
+        QPainter p(viewport());
+        p.fillRect(event->rect(), d->m_currentColors[(size_t) WidgetColorIdx::Background]);
+        p.drawPixmap(0, 0, d->m_heldFrame);
+        return;
+    }
+
+    // Taken here, not after, which would add the paint time to the interval.
+    d->m_sinceLastPaint = QDeadlineTimer(minRefreshInterval);
+
+    QPainter p(viewport());
+
+    p.save();
+
+    if (paintLog().isDebugEnabled())
+        p.fillRect(event->rect(), QColor::fromRgb(rand() % 60, rand() % 60, rand() % 60));
+    else
+        p.fillRect(event->rect(), d->m_currentColors[(size_t) WidgetColorIdx::Background]);
+
+    int scrollOffset = verticalScrollBar()->value();
+    int offset = -(scrollOffset * d->m_cellSize.height());
+
+    qreal margin = topMargin();
+
+    p.translate(QPointF{0.0, offset + margin});
+
+    paintCells(p, event);
+    paintCursor(p);
+    paintPreedit(p);
+
+    p.restore();
+
+    p.fillRect(QRectF{{0, 0}, QSizeF{(qreal) width(), topMargin()}},
+               d->m_currentColors[(size_t) WidgetColorIdx::Background]);
+
+    if (selectionLog().isDebugEnabled()) {
+        if (d->m_selection)
+            paintDebugSelection(p, *d->m_selection);
+        if (d->m_linkSelection)
+            paintDebugSelection(p, *d->m_linkSelection);
+    }
+
+    if (paintLog().isDebugEnabled()) {
+        QToolTip::showText(this->mapToGlobal(QPoint(width() - 200, 0)),
+                           QString("Paint: %1ms").arg(t.elapsed()));
+    }
+}
+
+void TerminalView::keyPressEvent(QKeyEvent *event)
+{
+    // Don't blink during typing
+    if (d->m_cursorBlinkTimer.isActive()) {
+        d->m_cursorBlinkTimer.start();
+        d->m_cursorBlinkState = true;
+    }
+
+    if (event->key() == Qt::Key_Control) {
+        if (!d->m_linkSelection.has_value() && checkLinkAt(mapFromGlobal(QCursor::pos()))) {
+            setCursor(Qt::PointingHandCursor);
+        }
+    }
+
+    event->accept();
+
+    if (d->m_surface->isInAltScreen()) {
+        d->m_surface->sendKey(event);
+    } else {
+        switch (event->key()) {
+        case Qt::Key_PageDown:
+            verticalScrollBar()->setValue(qBound(
+                0,
+                verticalScrollBar()->value() + d->m_surface->liveSize().height(),
+                verticalScrollBar()->maximum()));
+            break;
+        case Qt::Key_PageUp:
+            verticalScrollBar()->setValue(qBound(
+                0,
+                verticalScrollBar()->value() - d->m_surface->liveSize().height(),
+                verticalScrollBar()->maximum()));
+            break;
+        default:
+            if (event->key() < Qt::Key_Shift || event->key() > Qt::Key_ScrollLock)
+                verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+            d->m_surface->sendKey(event);
+            break;
+        }
+    }
+}
+
+void TerminalView::keyReleaseEvent(QKeyEvent *event)
+{
+    if (event->key() != Qt::Key_Control)
+        return;
+
+    // An answer arriving after Ctrl was released would underline a word the
+    // reader can no longer click.
+    d->m_linkQuestion = {};
+
+    if (d->m_linkSelection) {
+        clearLinkSelection();
+        setCursor(Qt::IBeamCursor);
+    }
+}
+
+void TerminalView::applySizeChange()
+{
+    QSize newLiveSize = {
+        qFloor((qreal) (viewport()->size().width()) / (qreal) d->m_cellSize.width()),
+        qFloor((qreal) (viewport()->size().height()) / d->m_cellSize.height()),
+    };
+
+    if (newLiveSize.height() <= 0)
+        return;
+
+    if (newLiveSize.width() <= 0)
+        newLiveSize.setWidth(1);
+
+    if (d->m_surface->liveSize() == newLiveSize)
+        return;
+
+    if (resizePty(newLiveSize)) {
+        d->m_surface->resize(newLiveSize);
+        flushVTerm(true);
+    }
+}
+
+void TerminalView::updateScrollBars()
+{
+    int scrollSize = d->m_surface->fullSize().height() - d->m_surface->liveSize().height();
+    const bool shouldScroll = verticalScrollBar()->value() == verticalScrollBar()->maximum();
+    verticalScrollBar()->setRange(0, scrollSize);
+    if (shouldScroll)
+        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+    updateViewport();
+}
+
+void TerminalView::resizeEvent(QResizeEvent *event)
+{
+    event->accept();
+
+    if (!d->m_sinceSizeApplied.isValid() || d->m_sinceSizeApplied.elapsed() >= resizeMaxWait)
+        applyDebouncedSize();
+    else
+        d->m_resizeDebounceTimer.start();
+}
+
+void TerminalView::applyDebouncedSize()
+{
+    d->m_resizeDebounceTimer.stop();
+    d->m_sinceSizeApplied.restart();
+
+    d->m_ignoreScroll = true;
+    applySizeChange();
+    setSelection(std::nullopt);
+    d->m_ignoreScroll = false;
+}
+
+QRect TerminalView::gridToViewport(QRect rect) const
+{
+    int offset = verticalScrollBar()->value();
+
+    int startRow = rect.y() - offset;
+    int numRows = rect.height();
+    int numCols = rect.width();
+
+    QRectF r{rect.x() * d->m_cellSize.width(),
+             startRow * d->m_cellSize.height(),
+             numCols * d->m_cellSize.width(),
+             numRows * d->m_cellSize.height()};
+
+    r.translate(0, topMargin());
+
+    return r.toAlignedRect();
+}
+
+QPoint TerminalView::toGridPos(QMouseEvent *event) const
+{
+    return globalToGrid(QPointF(event->pos()) + QPointF(0, -topMargin() + 0.5));
+}
+
+void TerminalView::scrollContentsBy(int dx, int dy)
+{
+    // Scrolling repaints the viewport, and every line an application scrolls
+    // off the screen moves the scrollbar. Left to itself that would paint the
+    // middle of a synchronized update several times over, which is the one
+    // thing the update asks not to happen.
+    if (d->m_surface && d->m_surface->isSynchronizedUpdateActive())
+        return;
+
+    QAbstractScrollArea::scrollContentsBy(dx, dy);
+}
+
+void TerminalView::scheduleViewportUpdate()
+{
+    // Everything that wants the viewport repainted arrives here, which makes
+    // it the one place a synchronized update has to be held at. What is on
+    // screen stays as it was until the application says the frame is done.
+    if (d->m_surface && d->m_surface->isSynchronizedUpdateActive())
+        return;
+
+    if (!d->m_passwordModeActive && d->m_updateRegion)
+        viewport()->update(*d->m_updateRegion);
+    else
+        viewport()->update();
+
+    d->m_updateRegion.reset();
+}
+
+void TerminalView::updateViewport()
+{
+    updateViewportRect({});
+}
+
+void TerminalView::updateViewportRect(const QRect &rect)
+{
+    // The damage is already held back by the surface, but the cursor is not,
+    // and a repaint of it would show a frame that is still being composed.
+    // Nothing needs collecting: the end of the update repaints all of it.
+    if (d->m_surface && d->m_surface->isSynchronizedUpdateActive())
+        return;
+
+    if (rect.isEmpty())
+        d->m_updateRegion = QRegion{viewport()->rect()};
+    else if (!d->m_updateRegion)
+        d->m_updateRegion = QRegion(rect);
+    else
+        d->m_updateRegion = d->m_updateRegion->united(rect);
+
+    if (d->m_updateTimer.isActive())
+        return;
+
+    if (!d->m_sinceLastPaint.hasExpired()) {
+        // What is left of the interval, not a whole one from here.
+        d->m_updateTimer.start(
+            std::chrono::ceil<milliseconds>(d->m_sinceLastPaint.remainingTimeAsDuration()));
+        return;
+    }
+
+    scheduleViewportUpdate();
+}
+
+void TerminalView::focusInEvent(QFocusEvent *)
+{
+    updateViewport();
+    configBlinkTimer();
+    selectionChanged(d->m_selection);
+    d->m_surface->sendFocus(true);
+}
+void TerminalView::focusOutEvent(QFocusEvent *)
+{
+    updateViewport();
+    configBlinkTimer();
+    d->m_surface->sendFocus(false);
+}
+
+void TerminalView::inputMethodEvent(QInputMethodEvent *event)
+{
+    // Gnome sends empty events when switching virtual desktops, so ignore those.
+    if (event->commitString().isEmpty() && event->preeditString().isEmpty()
+        && event->attributes().empty() && d->m_preEditString.isEmpty())
+        return;
+
+    verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+
+    d->m_preEditString = event->preeditString();
+
+    if (event->commitString().isEmpty()) {
+        updateViewport();
+        return;
+    }
+
+    d->m_surface->sendKey(event->commitString());
+}
+
+void TerminalView::mousePressEvent(QMouseEvent *event)
+{
+    if (d->m_allowMouseTracking) {
+        d->m_surface->mouseMove(toGridPos(event), event->modifiers());
+        d->m_surface->mouseButton(event->button(), true, event->modifiers());
+    }
+
+    d->m_scrollDirection = 0;
+
+    d->m_activeMouseSelect.start = viewportToGlobal(event->pos());
+
+    if (event->button() == Qt::LeftButton && event->modifiers() & Qt::ControlModifier) {
+        if (d->m_linkSelection) {
+            if (event->modifiers() & Qt::ShiftModifier) {
+                copyLinkToClipboard();
+                return;
+            }
+
+            linkActivated(d->m_linkSelection->link);
+        }
+        return;
+    }
+
+    if (event->button() == Qt::LeftButton) {
+        if (d->m_selection && system_clock::now() - d->m_lastDoubleClick < 500ms) {
+            d->m_selectLineMode = true;
+            const Selection newSelection{d->m_surface->gridToPos(
+                                             {0,
+                                              d->m_surface->posToGrid(d->m_selection->start).y()}),
+                                         d->m_surface->gridToPos(
+                                             {d->m_surface->liveSize().width(),
+                                              d->m_surface->posToGrid(d->m_selection->end).y()}),
+                                         false};
+            setSelection(newSelection);
+        } else {
+            d->m_selectLineMode = false;
+            int pos = d->m_surface->gridToPos(globalToGrid(viewportToGlobal(event->pos())));
+            setSelection(Selection{pos, pos, false});
+        }
+        event->accept();
+        updateViewport();
+    } else if (event->button() == Qt::RightButton) {
+        if (event->modifiers() & Qt::ShiftModifier) {
+            contextMenuRequested(event->pos());
+        } else if (d->m_selection) {
+            copyToClipboard();
+            setSelection(std::nullopt);
+        } else {
+            pasteFromClipboard();
+        }
+    } else if (event->button() == Qt::MiddleButton) {
+        QClipboard *clipboard = QApplication::clipboard();
+        if (clipboard->supportsSelection())
+            paste(clipboard->text(QClipboard::Selection));
+        else
+            paste(textFromSelection());
+    }
+}
+void TerminalView::mouseMoveEvent(QMouseEvent *event)
+{
+    if (d->m_allowMouseTracking)
+        d->m_surface->mouseMove(toGridPos(event), event->modifiers());
+
+    if (d->m_selection && event->buttons() & Qt::LeftButton) {
+        Selection newSelection = *d->m_selection;
+        int scrollVelocity = 0;
+        if (event->pos().y() < 0) {
+            scrollVelocity = (event->pos().y());
+        } else if (event->pos().y() > viewport()->height()) {
+            scrollVelocity = (event->pos().y() - viewport()->height());
+        }
+
+        if ((scrollVelocity != 0) != d->m_scrollTimer.isActive()) {
+            if (scrollVelocity != 0)
+                d->m_scrollTimer.start();
+            else
+                d->m_scrollTimer.stop();
+        }
+
+        d->m_scrollDirection = scrollVelocity;
+
+        if (d->m_scrollTimer.isActive() && scrollVelocity != 0) {
+            const milliseconds scrollInterval = 1000ms / qAbs(scrollVelocity);
+            if (d->m_scrollTimer.intervalAsDuration() != scrollInterval)
+                d->m_scrollTimer.setInterval(scrollInterval);
+        }
+
+        QPoint posBoundedToViewport = event->pos();
+        posBoundedToViewport.setX(qBound(0, posBoundedToViewport.x(), viewport()->width()));
+
+        int start = d->m_surface->gridToPos(globalToGrid(d->m_activeMouseSelect.start));
+        int newEnd = d->m_surface->gridToPos(globalToGrid(viewportToGlobal(posBoundedToViewport)));
+
+        if (start > newEnd) {
+            std::swap(start, newEnd);
+        }
+        if (start < 0)
+            start = 0;
+
+        if (d->m_selectLineMode) {
+            newSelection.start = d->m_surface->gridToPos({0, d->m_surface->posToGrid(start).y()});
+            newSelection.end = d->m_surface->gridToPos(
+                {d->m_surface->liveSize().width(), d->m_surface->posToGrid(newEnd).y()});
+        } else {
+            newSelection.start = start;
+            newSelection.end = newEnd;
+        }
+
+        setSelection(newSelection);
+    } else if (event->modifiers() & Qt::ControlModifier) {
+        checkLinkAt(event->pos());
+    } else {
+        clearLinkSelection();
+    }
+
+    if (d->m_linkSelection) {
+        setCursor(Qt::PointingHandCursor);
+    } else {
+        setCursor(Qt::IBeamCursor);
+    }
+}
+
+void TerminalView::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (d->m_allowMouseTracking) {
+        d->m_surface->mouseMove(toGridPos(event), event->modifiers());
+        d->m_surface->mouseButton(event->button(), false, event->modifiers());
+    }
+
+    d->m_scrollTimer.stop();
+
+    if (d->m_selection && event->button() == Qt::LeftButton) {
+        if (d->m_selection->end - d->m_selection->start == 0)
+            setSelection(std::nullopt);
+        else
+            setSelection(Selection{d->m_selection->start, d->m_selection->end, true});
+    }
+}
+
+void TerminalView::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    if (event->button() != Qt::LeftButton)
+        return;
+
+    if (d->m_allowMouseTracking) {
+        d->m_surface->mouseMove(toGridPos(event), event->modifiers());
+        d->m_surface->mouseButton(event->button(), true, event->modifiers());
+        d->m_surface->mouseButton(event->button(), false, event->modifiers());
+    }
+
+    const auto hit = textAt(event->pos());
+
+    setSelection(Selection{hit.start, hit.end, true});
+
+    d->m_lastDoubleClick = system_clock::now();
+
+    event->accept();
+}
+
+void TerminalView::wheelEvent(QWheelEvent *event)
+{
+    verticalScrollBar()->event(event);
+
+    if (!d->m_allowMouseTracking)
+        return;
+
+    if (event->angleDelta().ry() > 0)
+        d->m_surface->mouseButton(Qt::ExtraButton1, true, event->modifiers());
+    else if (event->angleDelta().ry() < 0)
+        d->m_surface->mouseButton(Qt::ExtraButton2, true, event->modifiers());
+}
+
+void TerminalView::clearLinkSelection()
+{
+    d->m_linkQuestion = {};
+    if (!d->m_linkSelection)
+        return;
+
+    d->m_linkSelection.reset();
+    QToolTip::hideText();
+    updateViewport();
+}
+
+bool TerminalView::checkLinkAt(const QPoint &pos)
+{
+    const auto setLinkSelection = [this](const LinkSelection &newSelection) {
+        d->m_linkQuestion = {};
+        if (!d->m_linkSelection || *d->m_linkSelection != newSelection) {
+            d->m_linkSelection = newSelection;
+            showLinkToolTip(newSelection.link);
+            updateViewport();
+        }
+        return true;
+    };
+
+    const std::optional<Hyperlink> hyperlink
+        = d->m_surface->hyperlinkAt(globalToGrid(viewportToGlobal(pos)));
+    if (hyperlink) {
+        // A uri QUrl will not parse has no encoded form to show, and a link
+        // whose target the reader cannot be shown is not offered at all:
+        // underlining it would invite a click on something it never named.
+        if (!QUrl(hyperlink->url).isValid()) {
+            clearLinkSelection();
+            return false;
+        }
+        return setLinkSelection(LinkSelection{{hyperlink->start, hyperlink->end},
+                                              Link{.text = hyperlink->url, .isUri = true}});
+    }
+
+    const TextAndOffsets hit = textAt(pos);
+
+    if (hit.text.size() > 0) {
+        QString t = QString::fromUcs4(hit.text.c_str(), hit.text.size()).trimmed();
+        auto newLink = toLink(t);
+        if (newLink)
+            return setLinkSelection(LinkSelection{{hit.start, hit.end}, *newLink});
+    }
+
+    askForLineLinks(pos);
+    return false;
+}
+
+void TerminalView::askForLineLinks(const QPoint &pos)
+{
+    const QPoint gridPos = globalToGrid(viewportToGlobal(pos));
+    const int hovered = d->m_surface->gridToPos(gridPos);
+    const int lineStart = d->m_surface->gridToPos({0, gridPos.y()});
+    const int lineEnd = d->m_surface->gridToPos(
+        {d->m_surface->liveSize().width(), gridPos.y()});
+
+    std::u32string text;
+    for (CellIterator it = d->m_surface->iteratorAt(lineStart);
+         it != d->m_surface->iteratorAt(lineEnd);
+         ++it) {
+        text.push_back(*it == 0 ? U' ' : *it);
+    }
+    const QString line = QString::fromUcs4(text.c_str(), text.size());
+    if (line.trimmed().isEmpty()) {
+        clearLinkSelection();
+        return;
+    }
+
+    // The pointer moving inside the cell a question is out for asks nothing
+    // new: that question is the one this cell is waiting for. A hand is never
+    // perfectly still, and asking again would drop the answer to it.
+    if (d->m_linkQuestion.pos == hovered && d->m_linkQuestion.line == line)
+        return;
+
+    // Anything else still being looked at is about a cell the pointer has left.
+    d->m_linkQuestion = {};
+
+    if (d->m_lineLinks.lineStart == lineStart && d->m_lineLinks.line == line) {
+        if (!applyLineLinks(d->m_lineLinks.links, lineStart, line, hovered))
+            clearLinkSelection();
+        return;
+    }
+
+    clearLinkSelection();
+    d->m_linkQuestion = {hovered, line};
+    toLineLinks(line, this, [this, line, lineStart, hovered](const QList<LineLink> &links) {
+        if (d->m_linkQuestion.pos != hovered || d->m_linkQuestion.line != line)
+            return;
+        d->m_linkQuestion = {};
+        d->m_lineLinks = {lineStart, line, links};
+        applyLineLinks(links, lineStart, line, hovered);
+    });
+}
+
+// A codepoint outside the BMP is one cell but two QChars, so an index into the
+// line is not an offset into the row of cells the line was read from.
+static int cellsBefore(const QString &line, int index)
+{
+    int cells = 0;
+    for (int i = 0; i < index && i < line.size(); ++i, ++cells) {
+        if (line.at(i).isHighSurrogate())
+            ++i;
+    }
+    return cells;
+}
+
+bool TerminalView::applyLineLinks(const QList<LineLink> &links,
+                                  int lineStart,
+                                  const QString &line,
+                                  int hovered)
+{
+    for (const LineLink &found : links) {
+        if (found.length <= 0)
+            continue;
+        const int start = lineStart + cellsBefore(line, found.startIndex);
+        const int end = lineStart + cellsBefore(line, found.startIndex + found.length);
+        if (hovered < start || hovered >= end)
+            continue;
+        const LinkSelection selection{{start, end}, found.link};
+        if (!d->m_linkSelection || *d->m_linkSelection != selection) {
+            d->m_linkSelection = selection;
+            showLinkToolTip(found.link);
+            updateViewport();
+        }
+        setCursor(Qt::PointingHandCursor);
+        return true;
+    }
+    return false;
+}
+
+void TerminalView::showLinkToolTip(const Link &link)
+{
+    // A uri the application supplied names something other than the text it is
+    // shown on, so it is shown encoded and a character cannot pass for one it
+    // only resembles. A sniffed target is read off the screen already, and a
+    // tooltip stands in for such a target: neither is a uri the reader has to
+    // judge, so a uri keeps its encoded form whatever else is offered for it.
+    const QString shown = link.isUri
+                              ? QString::fromUtf8(QUrl(link.text).toEncoded())
+                              : (link.tooltip.isEmpty() ? link.text : link.tooltip);
+
+    const int maxWidth = screen()->availableGeometry().width() / 2;
+    const QString text = QFontMetrics(QToolTip::font())
+                             .elidedText(shown, Qt::ElideMiddle, maxWidth)
+                             .toHtmlEscaped();
+
+    // Escaping is not enough on its own: QToolTip leaves the format at
+    // Qt::AutoText, and Qt::mightBeRichText decides by looking for a '<',
+    // which escaping has just removed - so a target carrying an '&' would be
+    // read as plain text and shown as "&amp;". Name the format instead of
+    // letting the target pick it.
+    QToolTip::showText(QCursor::pos(),
+                       QLatin1String("<html>") + text + QLatin1String("</html>"),
+                       this);
+}
+
+TerminalView::TextAndOffsets TerminalView::textAt(const QPoint &pos) const
+{
+    auto it = d->m_surface->iteratorAt(globalToGrid(viewportToGlobal(pos)));
+    auto itRev = d->m_surface->rIteratorAt(globalToGrid(viewportToGlobal(pos)));
+
+    std::u32string whiteSpaces = U" \t\x00a0";
+
+    const bool inverted = whiteSpaces.find(*it) != std::u32string::npos || *it == 0;
+
+    auto predicate = [inverted, whiteSpaces](const std::u32string::value_type &ch) {
+        if (inverted)
+            return ch != 0 && whiteSpaces.find(ch) == std::u32string::npos;
+        else
+            return ch == 0 || whiteSpaces.find(ch) != std::u32string::npos;
+    };
+
+    auto itRight = std::find_if(it, d->m_surface->end(), predicate);
+    auto itLeft = std::find_if(itRev, d->m_surface->rend(), predicate);
+
+    std::u32string text;
+    std::copy(itLeft.base(), it, std::back_inserter(text));
+    std::copy(it, itRight, std::back_inserter(text));
+    std::transform(text.begin(), text.end(), text.begin(), [](const char32_t &ch) {
+        return ch == 0 ? U' ' : ch;
+    });
+
+    return {(itLeft.base()).position(), itRight.position(), text};
+}
+
+bool TerminalView::event(QEvent *event)
+{
+    if (event->type() == QEvent::DevicePixelRatioChange) {
+        // The cell size is snapped to device pixels, so it has to be recalculated.
+        setFont(font());
+    }
+
+    if (event->type() == QEvent::Paint) {
+        QPainter p(this);
+        p.fillRect(QRect(QPoint(0, 0), size()),
+                   d->m_currentColors[(size_t) WidgetColorIdx::Background]);
+        return true;
+    }
+
+    // TODO: Is this necessary?
+    if (event->type() == QEvent::KeyPress) {
+        auto k = static_cast<QKeyEvent *>(event);
+        keyPressEvent(k);
+        return true;
+    }
+    if (event->type() == QEvent::KeyRelease) {
+        auto k = static_cast<QKeyEvent *>(event);
+        keyReleaseEvent(k);
+        return true;
+    }
+
+    return QAbstractScrollArea::event(event);
+}
+
+} // namespace TerminalSolution

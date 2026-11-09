@@ -401,6 +401,14 @@ void SettingsDialog::build()
 
     // ---- Terminal
     addCategory(QStringLiteral("terminal"), tr("Terminal"));
+#ifndef Q_OS_WIN // Windows has no Konsole: always the built-in terminal
+    addChoice(QStringLiteral("terminal/engine"),
+              QStringLiteral("auto"),
+              Apply::Now,
+              tr("Terminal Engine"),
+              tr("Konsole's terminal, embedded in the panel, when Konsole is installed; otherwise Lieve's built-in terminal. For new terminals."),
+              {{tr("Automatic (Konsole when installed)"), QStringLiteral("auto")}, {tr("Built-in"), QStringLiteral("builtin")}});
+#endif
     {
         QList<QPair<QString, QString>> shells{{tr("Automatic (%1, your login shell)").arg(TerminalPanel::loginShellName()), QStringLiteral("auto")}};
         const QStringList names = TerminalPanel::shellNames();
