@@ -30,8 +30,6 @@ jobs:
         run: |
           for v in prefix bindir libexecdir includedir; do echo "$v=$(pkg-config --variable=$v Qt6Core)"; done
           ls "$(pkg-config --variable=libexecdir Qt6Core)" | head -n 30 || true
-          echo "KTextEditor translations:"; pacman -Ql mingw-w64-ucrt-x86_64-ktexteditor | grep -iE 'locale|\.mo$|\.qm$' | head -n 5 || true
-          ls /ucrt64/share/locale/it/LC_MESSAGES 2>/dev/null | head -n 20 || true
       - name: Build
         run: make -j"$(nproc)"
       - name: Test

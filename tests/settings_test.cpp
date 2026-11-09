@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     Lieve::ensureConfigFile();
     const auto read = [] {
         QFile file(Lieve::configFile());
-        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        return file.open(QIODevice::ReadOnly | QIODevice::Text) ? file.readAll() : QByteArray(); // CRLF on Windows
     };
     const QByteArray before = read();
     expect(before.contains("[terminal]") && before.contains("\nshell=auto"), "template has [terminal] shell=auto");

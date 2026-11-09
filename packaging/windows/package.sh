@@ -52,7 +52,8 @@ for lang in it; do
         cp "$(dirname "$qtbase")/qtbase_$lang.qm" "$out/translations/"
     fi
     for domain in ktexteditor6 kxmlgui6 kparts6 kwidgetsaddons6 kconfig6 kcoreaddons6 ki18n6 syntaxhighlighting6 kdbusaddons6 kconfigwidgets6 kcompletion6 sonnet6 kio6; do
-        mo=$(find "$prefix/share/locale/$lang" -name "$domain.mo" 2>/dev/null | head -n1)
+        # KDE on Windows keeps them in bin/data/locale
+        mo=$(find "$prefix/bin/data/locale/$lang" "$prefix/share/locale/$lang" -name "$domain.mo" 2>/dev/null | head -n1)
         if [ -n "$mo" ]; then
             mkdir -p "$out/data/locale/$lang/LC_MESSAGES"
             cp "$mo" "$out/data/locale/$lang/LC_MESSAGES/"
