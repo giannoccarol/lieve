@@ -4,7 +4,7 @@ name: Windows
 # Linux. The result is a folder to unzip and run (artifact "lieve-windows").
 on:
   push:
-    branches: [windows-port]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
