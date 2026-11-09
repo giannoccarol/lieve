@@ -949,7 +949,12 @@ int main(int argc, char **argv)
     // the running one (via D-Bus) and exits immediately.
     std::unique_ptr<KDBusService> service;
     const bool testRun = !qEnvironmentVariableIsEmpty("LIEVE_SCREENSHOT") && !qEnvironmentVariableIsSet("LIEVE_TEST_UNIQUE");
+#ifdef Q_OS_WIN
+    const bool separate = true; // Windows has no session bus: a process per launch, for now
+    Q_UNUSED(testRun)
+#else
     const bool separate = parser.isSet(QStringLiteral("new-instance")) || testRun;
+#endif
     if (!separate) {
         service = std::make_unique<KDBusService>(KDBusService::Unique | KDBusService::NoExitOnFailure);
         QObject::connect(service.get(), &KDBusService::activateRequested, &app, [](const QStringList &arguments, const QString &workingDirectory) {

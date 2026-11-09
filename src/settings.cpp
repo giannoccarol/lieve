@@ -329,7 +329,11 @@ bool configOrVscode(const QString &configKey, const QString &projectRoot, const 
 QJsonObject vscodeUserSettings()
 {
     static const QJsonObject settings = [] {
+#ifdef Q_OS_WIN
+        const QString c = QDir::fromNativeSeparators(qEnvironmentVariable("APPDATA")); // VS Code keeps it in the roaming profile
+#else
         const QString c = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+#endif
         for (const QString &dir : {QStringLiteral("/Code"), QStringLiteral("/Code - OSS"), QStringLiteral("/VSCodium")}) {
             const QString path = c + dir + QStringLiteral("/User/settings.json");
             if (QFileInfo::exists(path)) {

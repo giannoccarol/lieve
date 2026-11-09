@@ -1,0 +1,43 @@
+name: Windows
+
+# Lieve for Windows, built in MSYS2 (UCRT64) with the same Makefile as on
+# Linux. The result is a folder to unzip and run (artifact "lieve-windows").
+on:
+  push:
+    branches: [windows-port]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: make git
+          pacboy: >-
+            gcc:p pkgconf:p
+            qt6-base:p qt6-svg:p qt6-tools:p qt6-imageformats:p
+            ktexteditor:p kparts:p kxmlgui:p kcoreaddons:p kdbusaddons:p kwindowsystem:p
+            syntax-highlighting:p kconfig:p kwidgetsaddons:p ki18n:p breeze-icons:p
+            ripgrep:p
+      - name: Where Qt keeps its tools
+        run: |
+          for v in prefix bindir libexecdir includedir; do echo "$v=$(pkg-config --variable=$v Qt6Core)"; done
+          ls "$(pkg-config --variable=libexecdir Qt6Core)" | head -n 30 || true
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Test
+        continue-on-error: true
+        run: make -j"$(nproc)" check
+      - name: Package
+        run: bash packaging/windows/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lieve-windows
+          path: dist/Lieve

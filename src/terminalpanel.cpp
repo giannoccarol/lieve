@@ -1,5 +1,6 @@
 #include "terminalpanel.h"
 
+#include "platform.h"
 #include "settings.h"
 #include "tabview.h"
 #include "theme.h"
@@ -21,16 +22,19 @@
 #include <QFile>
 #include <QLabel>
 #include <QMenu>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QTabBar>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#ifndef Q_OS_WIN
 #include <fcntl.h>
 #include <pwd.h>
 #include <termios.h>
 #include <unistd.h>
+#endif
 
 namespace
 {
@@ -45,14 +49,44 @@ bool isExecutable(const QString &path)
     return info.isFile() && info.isExecutable();
 }
 
+#ifdef Q_OS_WIN
+// The shells of a Windows system, in order of preference: PowerShell 7,
+// Windows PowerShell, cmd, Git Bash, WSL.
+QStringList windowsShells()
+{
+    const QString system = QDir::fromNativeSeparators(qEnvironmentVariable("SystemRoot", QStringLiteral("C:/Windows"))) + QStringLiteral("/System32");
+    const QString programFiles = QDir::fromNativeSeparators(qEnvironmentVariable("ProgramFiles", QStringLiteral("C:/Program Files")));
+    QStringList shells{
+        QStandardPaths::findExecutable(QStringLiteral("pwsh")),
+        programFiles + QStringLiteral("/PowerShell/7/pwsh.exe"),
+        system + QStringLiteral("/WindowsPowerShell/v1.0/powershell.exe"),
+        QDir::fromNativeSeparators(qEnvironmentVariable("ComSpec", system + QStringLiteral("/cmd.exe"))),
+        programFiles + QStringLiteral("/Git/bin/bash.exe"),
+        system + QStringLiteral("/wsl.exe"),
+    };
+    shells.removeAll(QString());
+    return shells;
+}
+#endif
+
 // The shell chosen for this user (chsh), the one a Konsole window opens.
 QString loginShell()
 {
+#ifdef Q_OS_WIN
+    const QStringList shells = windowsShells();
+    for (const QString &shell : shells) {
+        if (QFileInfo(shell).isFile()) {
+            return shell;
+        }
+    }
+    return QStringLiteral("cmd.exe");
+#else
     if (const passwd *pw = getpwuid(getuid()); pw && pw->pw_shell && isExecutable(QString::fromLocal8Bit(pw->pw_shell))) {
         return QString::fromLocal8Bit(pw->pw_shell);
     }
     const QString env = qEnvironmentVariable("SHELL");
     return isExecutable(env) ? env : QStringLiteral("/bin/sh");
+#endif
 }
 
 // Interactive shells listed in /etc/shells, plus the login shell and $SHELL.
@@ -63,6 +97,9 @@ QList<Shell> availableShells()
     static const QStringList skip = {QStringLiteral("rbash"), QStringLiteral("git-shell"), QStringLiteral("nologin"),
                                      QStringLiteral("false"), QStringLiteral("systemd-home-fallback-shell")};
     QStringList candidates;
+#ifdef Q_OS_WIN
+    candidates = windowsShells();
+#endif
     QFile file(QStringLiteral("/etc/shells"));
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         const QStringList lines = QString::fromLocal8Bit(file.readAll()).split(QLatin1Char('\n'));
@@ -82,7 +119,11 @@ QList<Shell> availableShells()
             continue;
         }
         const QString real = QFileInfo(path).canonicalFilePath();
+#ifdef Q_OS_WIN
+        const QString name = QFileInfo(real).completeBaseName(); // "pwsh", not "pwsh.exe"
+#else
         const QString name = QFileInfo(real).fileName();
+#endif
         if (seen.contains(real) || skip.contains(name) || skip.contains(QFileInfo(path).fileName())) {
             continue;
         }
@@ -107,9 +148,65 @@ QString resolveShell(const QString &setting)
     if (setting.isEmpty() || setting == QLatin1String("auto")) {
         return loginShell();
     }
-    const QString path = setting.contains(QLatin1Char('/')) ? setting : QStandardPaths::findExecutable(setting);
+    const bool isPath = setting.contains(QLatin1Char('/')) || setting.contains(QLatin1Char('\\'));
+    const QString path = isPath ? QDir::fromNativeSeparators(setting) : QStandardPaths::findExecutable(setting);
     return isExecutable(path) ? path : loginShell();
 }
+
+#ifdef Q_OS_WIN
+// The arguments that make `shell` run `command` and stay open afterwards
+// (the window shows the output; the command can be run again).
+QStringList runAndStay(const QString &shell, const QString &command)
+{
+    if (command.isEmpty()) {
+        return {};
+    }
+    const QString name = QFileInfo(shell).completeBaseName().toLower();
+    if (name == QLatin1String("pwsh") || name == QLatin1String("powershell")) {
+        return {QStringLiteral("-NoExit"), QStringLiteral("-Command"), command};
+    }
+    if (name == QLatin1String("cmd")) {
+        return {QStringLiteral("/K"), command};
+    }
+    if (name == QLatin1String("wsl")) {
+        return {QStringLiteral("--"), QStringLiteral("bash"), QStringLiteral("-ic"), command + QStringLiteral("; exec bash")};
+    }
+    return {QStringLiteral("-ic"), command + QStringLiteral("; exec bash")}; // Git Bash
+}
+
+// Without Konsole (Windows): a Windows Terminal window in `dir`, or else the
+// shell in a console window of its own.
+void openExternalTerminal(const QString &dir, const QString &shell, const QString &title, const QString &command)
+{
+    const QStringList shellArguments = runAndStay(shell, command);
+    const QString wt = QStandardPaths::findExecutable(QStringLiteral("wt"));
+    if (!wt.isEmpty()) {
+        QStringList arguments{QStringLiteral("-d"), QDir::toNativeSeparators(dir)};
+        if (!title.isEmpty()) {
+            arguments << QStringLiteral("--title") << title;
+        }
+        arguments << QDir::toNativeSeparators(shell);
+        for (const QString &argument : shellArguments) {
+            QString escaped = argument;
+            arguments << escaped.replace(QLatin1Char(';'), QStringLiteral("\\;")); // ; separates Windows Terminal's own commands
+        }
+        QProcess::startDetached(wt, arguments, dir);
+        return;
+    }
+    Lieve::Platform::startInConsole(shell, shellArguments, dir);
+}
+#endif
+}
+
+bool TerminalPanel::embedded()
+{
+#ifdef Q_OS_WIN
+    // Konsole is not part of Lieve's Windows build: Windows Terminal instead.
+    static const bool available = KPluginMetaData(QStringLiteral("kf6/parts/konsolepart")).isValid();
+    return available;
+#else
+    return true;
+#endif
 }
 
 TerminalPanel::TerminalPanel(QWidget *parent)
@@ -284,6 +381,12 @@ void TerminalPanel::newTerminal(const QString &dir, const QString &shellPath)
 {
     const QString shell = shellPath.isEmpty() ? resolveShell(shellSetting()) : shellPath;
     const QString workDir = !dir.isEmpty() ? dir : (!m_dir.isEmpty() ? m_dir : QDir::homePath());
+#ifdef Q_OS_WIN
+    if (!embedded()) {
+        openExternalTerminal(workDir, shell, QString(), QString());
+        return;
+    }
+#endif
     const auto result = KPluginFactory::instantiatePlugin<KParts::ReadOnlyPart>(KPluginMetaData(QStringLiteral("kf6/parts/konsolepart")), this);
     if (!result.plugin) {
         auto *error = new QLabel(tr("Could not load the Konsole terminal.\n%1\n\nInstall Konsole: pacman -S konsole")
@@ -345,6 +448,9 @@ bool shellReady(int pid)
     if (pid <= 0) {
         return false;
     }
+#ifdef Q_OS_WIN
+    return true;
+#else
     const int fd = ::open(QStringLiteral("/proc/%1/fd/0").arg(pid).toLocal8Bit().constData(), O_RDONLY | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) {
         return false;
@@ -353,6 +459,7 @@ bool shellReady(int pid)
     const bool ok = tcgetattr(fd, &mode) == 0;
     ::close(fd);
     return ok && !(mode.c_lflag & ECHO);
+#endif
 }
 
 // Types `text` once the shell is ready (checked every 30 ms, for 5 s at most).
@@ -378,6 +485,12 @@ void typeWhenReady(KParts::ReadOnlyPart *part, const QString &text)
 
 QWidget *TerminalPanel::runCommand(const QString &dir, const QString &title, const QString &command, QWidget *reuse)
 {
+#ifdef Q_OS_WIN
+    if (!embedded()) {
+        openExternalTerminal(dir, resolveShell(shellSetting()), title, command);
+        return nullptr;
+    }
+#endif
     KParts::ReadOnlyPart *part = reuse ? m_parts.value(reuse).data() : nullptr;
     auto *terminal = qobject_cast<TerminalInterface *>(part);
     if (!terminal || terminal->foregroundProcessId() != -1) { // closed, or still running something

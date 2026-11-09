@@ -1,6 +1,7 @@
 #include "settingsdialog.h"
 
 #include "mainwindow.h"
+#include "platform.h"
 #include "prettier.h"
 #include "projects.h"
 #include "settings.h"
@@ -326,7 +327,7 @@ void SettingsDialog::build()
     // ---- Editor
     addCategory(QStringLiteral("editor"), tr("Text Editor"));
     {
-        const QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        const QFont fixed = Lieve::Platform::fixedFont();
         QList<QPair<QString, QString>> fonts{{tr("Default (%1)", "font family").arg(fixed.family()), QString()}};
         const QStringList families = QFontDatabase::families();
         for (const QString &family : families) {

@@ -95,8 +95,8 @@ QString Updater::prefix() const
 
 bool Updater::canSelfUpdate() const
 {
-#ifdef LIEVE_PACKAGED
-    return false;
+#if defined(LIEVE_PACKAGED) || defined(Q_OS_WIN)
+    return false; // a package manager, or on Windows the release page, brings updates
 #endif
     return QFileInfo(prefix() + QStringLiteral("/bin")).isWritable() && !QStandardPaths::findExecutable(QStringLiteral("git")).isEmpty();
 }

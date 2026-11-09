@@ -1,5 +1,7 @@
 #include "lspclient.h"
 
+#include "platform.h"
+
 #include "prettier.h"
 #include "version.h"
 
@@ -17,8 +19,6 @@
 
 #include <algorithm>
 
-#include <signal.h>
-#include <unistd.h>
 
 namespace Lieve
 {
@@ -67,7 +67,8 @@ QStringList globalBinDirs()
          << home + QStringLiteral("/.local/share/mise/shims") << home + QStringLiteral("/.volta/bin")
          << home + QStringLiteral("/.local/share/fnm/aliases/default/bin") << home + QStringLiteral("/.npm-global/bin")
          << home + QStringLiteral("/.npm-packages/bin") << home + QStringLiteral("/.local/share/pnpm") << home + QStringLiteral("/.bun/bin")
-         << home + QStringLiteral("/.yarn/bin") << home + QStringLiteral("/.local/bin") << QStringLiteral("/usr/local/bin") << QStringLiteral("/usr/bin");
+         << home + QStringLiteral("/.yarn/bin") << home + QStringLiteral("/.local/bin") << QStringLiteral("/usr/local/bin") << QStringLiteral("/usr/bin")
+         << Platform::nodeBinDirs();
     dirs.removeAll(QString());
     dirs.removeDuplicates();
     return dirs;
@@ -83,6 +84,12 @@ QString findProgram(const QString &name, const QString &root)
             if (QFileInfo(local).isExecutable()) {
                 return local;
             }
+#ifdef Q_OS_WIN
+            // npm's launchers on Windows: name.cmd (and name.ps1)
+            if (QFileInfo::exists(local + QStringLiteral(".cmd"))) {
+                return local + QStringLiteral(".cmd");
+            }
+#endif
         } while (dir.cdUp() && dir.absolutePath() != QDir::homePath() && !dir.isRoot());
     }
     QString found = QStandardPaths::findExecutable(name);
@@ -269,9 +276,7 @@ void LspClient::launch()
     m_process->setWorkingDirectory(m_spec.root);
     // Its own process group, so stopping it also ends tsserver and the
     // other helpers it starts.
-    m_process->setChildProcessModifier([] {
-        ::setpgid(0, 0);
-    });
+    Platform::ownGroup(m_process);
     if (traceEnabled()) {
         m_process->setProcessChannelMode(QProcess::ForwardedErrorChannel);
     } else {
@@ -375,14 +380,14 @@ void LspClient::stop(bool wait)
     }
     if (wait) {
         if (!process->waitForFinished(500) && pid > 0) {
-            ::kill(-pid, SIGTERM);
+            Platform::endGroup(pid, false);
             if (!process->waitForFinished(500)) {
-                ::kill(-pid, SIGKILL);
+                Platform::endGroup(pid, true);
                 process->waitForFinished(200);
             }
         }
         if (pid > 0) {
-            ::kill(-pid, SIGTERM); // helpers left in the group
+            Platform::endGroup(pid, false); // helpers left in the group
         }
         delete process;
         return;
@@ -391,13 +396,13 @@ void LspClient::stop(bool wait)
     process->setParent(QCoreApplication::instance());
     connect(process, &QProcess::finished, process, [process, pid] {
         if (pid > 0) {
-            ::kill(-pid, SIGTERM);
+            Platform::endGroup(pid, false);
         }
         process->deleteLater();
     });
     QTimer::singleShot(1500, process, [pid] {
         if (pid > 0) {
-            ::kill(-pid, SIGKILL);
+            Platform::endGroup(pid, true);
         }
     });
     if (process->state() == QProcess::NotRunning) {
@@ -408,7 +413,7 @@ void LspClient::stop(bool wait)
 void LspClient::killGroup()
 {
     if (m_process && m_process->processId() > 0) {
-        ::kill(-m_process->processId(), SIGTERM);
+        Platform::endGroup(m_process->processId(), false);
     }
 }
 
@@ -602,7 +607,7 @@ void LspClient::onFinished()
     QProcess *process = std::exchange(m_process, nullptr);
     const qint64 pid = process->processId();
     if (pid > 0) {
-        ::kill(-pid, SIGTERM); // what it started goes with it
+        Platform::endGroup(pid, false); // what it started goes with it
     }
     if (m_error.isEmpty()) {
         m_error = process->exitStatus() == QProcess::CrashExit ? QCoreApplication::translate("Lsp", "the server crashed")

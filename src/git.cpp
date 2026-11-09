@@ -25,7 +25,7 @@ QProcessEnvironment gitEnvironment()
         env.insert(QStringLiteral("GIT_TERMINAL_PROMPT"), QStringLiteral("0")); // never wait on an invisible terminal
         // Hooks (husky, lint-staged...) need node even when Lieve starts from
         // the menu with a minimal PATH.
-        QStringList path = env.value(QStringLiteral("PATH")).split(QLatin1Char(':'), Qt::SkipEmptyParts);
+        QStringList path = env.value(QStringLiteral("PATH")).split(QDir::listSeparator(), Qt::SkipEmptyParts);
         QStringList extra;
         const QString node = findNode();
         if (!node.isEmpty()) {
@@ -37,7 +37,7 @@ QProcessEnvironment gitEnvironment()
                 path << dir;
             }
         }
-        env.insert(QStringLiteral("PATH"), path.join(QLatin1Char(':')));
+        env.insert(QStringLiteral("PATH"), path.join(QDir::listSeparator()));
         return env;
     }();
     return environment;

@@ -13,6 +13,14 @@ namespace
 {
 QStringList builtinExtensionRoots()
 {
+#ifdef Q_OS_WIN
+    const QString local = QDir::fromNativeSeparators(qEnvironmentVariable("LOCALAPPDATA"));
+    const QString programFiles = QDir::fromNativeSeparators(qEnvironmentVariable("ProgramFiles", QStringLiteral("C:/Program Files")));
+    return {local + QStringLiteral("/Programs/Microsoft VS Code/resources/app/extensions"),
+            programFiles + QStringLiteral("/Microsoft VS Code/resources/app/extensions"),
+            local + QStringLiteral("/Programs/VSCodium/resources/app/extensions"),
+            programFiles + QStringLiteral("/VSCodium/resources/app/extensions")};
+#endif
     return {QStringLiteral("/usr/share/code/resources/app/extensions"),
             QStringLiteral("/opt/visual-studio-code/resources/app/extensions"),
             QStringLiteral("/usr/lib/code/extensions"),

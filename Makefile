@@ -1,23 +1,37 @@
 # Lieve — build without CMake: Qt 6 via pkg-config, KDE Frameworks 6 headers
 # from /usr/include/KF6. Usage: make && make install (to ~/.local).
+# On Windows it builds the same way in an MSYS2 UCRT64 shell (packaging/windows).
 
 PREFIX ?= $(HOME)/.local
 CXX ?= g++
+ifeq ($(OS),Windows_NT)
+WINDOWS := 1
+EXE := .exe
+# A window program: no console window behind it.
+LDFLAGS += -mwindows
+endif
+BIN := lieve$(EXE)
+
 CXXFLAGS ?= -O2 -pipe
-CXXFLAGS += -std=c++20 -fPIC -Wall -Wextra -Wno-unused-parameter
+CXXFLAGS += -std=c++20 -Wall -Wextra -Wno-unused-parameter $(if $(WINDOWS),,-fPIC)
 # Distribution packages build with PACKAGED=1: updates then come from the
 # package manager, not from Lieve's own updater.
 CXXFLAGS += $(if $(PACKAGED),-DLIEVE_PACKAGED)
 
-MOC ?= $(firstword $(wildcard /usr/lib/qt6/moc /usr/lib/qt6/libexec/moc /usr/libexec/qt6/moc /usr/lib64/qt6/libexec/moc))
-RCC ?= $(firstword $(wildcard /usr/lib/qt6/rcc /usr/lib/qt6/libexec/rcc /usr/libexec/qt6/rcc /usr/lib64/qt6/libexec/rcc))
+QT_LIBEXEC := $(shell pkg-config --variable=libexecdir Qt6Core)
 QT_BIN := $(shell pkg-config --variable=bindir Qt6Core)
-LRELEASE ?= $(firstword $(wildcard $(QT_BIN)/lrelease /usr/lib/qt6/bin/lrelease /usr/lib64/qt6/bin/lrelease) $(shell command -v lrelease-qt6 lrelease6 lrelease 2>/dev/null))
-LUPDATE ?= $(firstword $(wildcard $(QT_BIN)/lupdate /usr/lib/qt6/bin/lupdate /usr/lib64/qt6/bin/lupdate) $(shell command -v lupdate-qt6 lupdate6 lupdate 2>/dev/null))
+MOC ?= $(firstword $(wildcard $(QT_LIBEXEC)/moc$(EXE) $(QT_BIN)/moc$(EXE) /usr/lib/qt6/moc /usr/lib/qt6/libexec/moc /usr/libexec/qt6/moc /usr/lib64/qt6/libexec/moc))
+RCC ?= $(firstword $(wildcard $(QT_LIBEXEC)/rcc$(EXE) $(QT_BIN)/rcc$(EXE) /usr/lib/qt6/rcc /usr/lib/qt6/libexec/rcc /usr/libexec/qt6/rcc /usr/lib64/qt6/libexec/rcc))
+LRELEASE ?= $(firstword $(wildcard $(QT_BIN)/lrelease$(EXE) $(QT_LIBEXEC)/lrelease$(EXE) /usr/lib/qt6/bin/lrelease /usr/lib64/qt6/bin/lrelease) $(shell command -v lrelease-qt6 lrelease6 lrelease 2>/dev/null))
+LUPDATE ?= $(firstword $(wildcard $(QT_BIN)/lupdate$(EXE) $(QT_LIBEXEC)/lupdate$(EXE) /usr/lib/qt6/bin/lupdate /usr/lib64/qt6/bin/lupdate) $(shell command -v lupdate-qt6 lupdate6 lupdate 2>/dev/null))
 QT_CFLAGS := $(shell pkg-config --cflags Qt6Widgets Qt6DBus Qt6Network)
 QT_LIBS := $(shell pkg-config --libs Qt6Widgets Qt6DBus Qt6Network)
-KF_CFLAGS := $(addprefix -I,$(patsubst %/,%,$(wildcard /usr/include/KF6/*/)))
+# KF6 headers sit next to Qt's: /usr/include/KF6, or /ucrt64/include/KF6 in MSYS2.
+KF_INCLUDE ?= $(firstword $(wildcard $(dir $(shell pkg-config --variable=includedir Qt6Core))KF6) /usr/include/KF6)
+KF_CFLAGS := $(addprefix -I,$(patsubst %/,%,$(wildcard $(KF_INCLUDE)/*/)))
 KF_LIBS := -lKF6TextEditor -lKF6Parts -lKF6XmlGui -lKF6CoreAddons -lKF6DBusAddons -lKF6WindowSystem -lKF6SyntaxHighlighting -lKF6ConfigCore -lKF6WidgetsAddons -lKF6I18n
+# Windows has no icon theme: Breeze comes built into this library.
+KF_LIBS += $(if $(WINDOWS),-lKF6BreezeIcons)
 
 SRC := $(wildcard src/*.cpp)
 MOC_HEADERS := $(shell grep -l Q_OBJECT src/*.h)
@@ -32,9 +46,9 @@ QM :=
 endif
 OBJ := $(patsubst src/%.cpp,build/%.o,$(SRC)) $(MOC_SRC:.cpp=.o) build/qrc_lieve.o build/qrc_i18n.o
 
-all: lieve
+all: $(BIN)
 
-lieve: $(OBJ)
+$(BIN): $(OBJ)
 	$(CXX) $(LDFLAGS) -o $@ $^ $(QT_LIBS) $(KF_LIBS)
 
 build/%.o: src/%.cpp | build
@@ -77,23 +91,23 @@ build:
 	mkdir -p build
 
 # Tests: make check (they need git and run without a display).
-TESTS := $(patsubst tests/%.cpp,build/tests/%,$(wildcard tests/*_test.cpp))
+TESTS := $(patsubst tests/%.cpp,build/tests/%$(EXE),$(wildcard tests/*_test.cpp))
 
 check: $(TESTS)
 	@for t in $(TESTS); do QT_QPA_PLATFORM=offscreen $$t || exit 1; done
 
-build/tests/%: tests/%.cpp | build/tests
+build/tests/%$(EXE): tests/%.cpp | build/tests
 	$(CXX) $(CXXFLAGS) $(QT_CFLAGS) $(KF_CFLAGS) -Isrc -o $@ $(filter %.cpp %.o,$^) $(QT_LIBS) $(KF_LIBS)
 
-build/tests/blame_test: build/blame.o build/moc_blame.o
-build/tests/settings_test: build/settings.o
-build/tests/conflicts_test: build/conflicts.o
-build/tests/git_test: build/git.o build/moc_git.o build/prettier.o build/settings.o
-build/tests/npmpackages_test: build/npmpackages.o
-build/tests/scopes_test: build/scopes.o
-build/tests/lspedits_test: build/lspedits.o
-build/tests/hunks_test: build/linediff.o
-build/tests/staging_test: build/linediff.o build/git.o build/moc_git.o build/prettier.o build/settings.o
+build/tests/blame_test$(EXE): build/blame.o build/moc_blame.o
+build/tests/settings_test$(EXE): build/settings.o
+build/tests/conflicts_test$(EXE): build/conflicts.o
+build/tests/git_test$(EXE): build/git.o build/moc_git.o build/prettier.o build/settings.o build/platform.o
+build/tests/npmpackages_test$(EXE): build/npmpackages.o
+build/tests/scopes_test$(EXE): build/scopes.o
+build/tests/lspedits_test$(EXE): build/lspedits.o
+build/tests/hunks_test$(EXE): build/linediff.o
+build/tests/staging_test$(EXE): build/linediff.o build/git.o build/moc_git.o build/prettier.o build/settings.o build/platform.o
 
 build/tests:
 	mkdir -p build/tests
@@ -111,7 +125,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/lieve.svg
 
 clean:
-	rm -rf build lieve
+	rm -rf build $(BIN)
 
 .PHONY: all install uninstall clean translations check
 

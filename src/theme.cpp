@@ -1,5 +1,7 @@
 #include "theme.h"
 
+#include "platform.h"
+
 #include "settings.h"
 
 #include <KConfig>
@@ -474,6 +476,7 @@ void apply(QApplication &app)
     c.selection = mix(c.chrome, c.accent, c.dark ? 0.38 : 0.22);
     c.selectionInactive = mix(c.chrome, c.fg, c.dark ? 0.11 : 0.09);
     g_colors = c;
+    Platform::setupIcons(c.dark);
 
     // [ui] theme=system keeps Plasma's own colours for the window.
     if (config().value(QStringLiteral("ui/theme"), QStringLiteral("editor")).toString().trimmed() != QLatin1String("system")) {

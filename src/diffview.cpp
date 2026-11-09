@@ -3,6 +3,7 @@
 #include "gitgutter.h"
 #include "gitpanel.h"
 #include "linetint.h"
+#include "platform.h"
 #include "settings.h"
 #include "tabview.h"
 #include "theme.h"
@@ -451,7 +452,7 @@ void DiffView::setupView(KTextEditor::View *view)
     const QString family = c.value(QStringLiteral("editor/fontFamily")).toString().trimmed();
     const double size = c.value(QStringLiteral("editor/fontSize"), 0).toDouble();
     if (!family.isEmpty() || size > 0) {
-        QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        QFont font = Lieve::Platform::fixedFont();
         if (!family.isEmpty()) {
             font.setFamily(family);
         }

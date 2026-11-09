@@ -1,5 +1,7 @@
 #include "prettier.h"
 
+#include "platform.h"
+
 #include "jsonc.h"
 #include "settings.h"
 
@@ -514,12 +516,13 @@ QString findNode()
     // where version managers keep node.
     const QString home = QDir::homePath();
     found = QStandardPaths::findExecutable(QStringLiteral("node"),
-                                           {home + QStringLiteral("/.local/share/mise/shims"),
-                                            home + QStringLiteral("/.volta/bin"),
-                                            home + QStringLiteral("/.local/share/fnm/aliases/default/bin"),
-                                            home + QStringLiteral("/.local/bin"),
-                                            QStringLiteral("/usr/local/bin"),
-                                            QStringLiteral("/usr/bin")});
+                                           QStringList{home + QStringLiteral("/.local/share/mise/shims"),
+                                                       home + QStringLiteral("/.volta/bin"),
+                                                       home + QStringLiteral("/.local/share/fnm/aliases/default/bin"),
+                                                       home + QStringLiteral("/.local/bin"),
+                                                       QStringLiteral("/usr/local/bin"),
+                                                       QStringLiteral("/usr/bin")}
+                                               + Platform::nodeBinDirs());
     if (!found.isEmpty()) {
         return found;
     }

@@ -1,5 +1,6 @@
 #include "markdownpreview.h"
 
+#include "platform.h"
 #include "settings.h"
 #include "theme.h"
 
@@ -293,7 +294,7 @@ QFont editorFont()
     const double size = c.value(QStringLiteral("editor/fontSize"), 0).toDouble();
     QFont font = KTextEditor::Editor::instance()->font();
     if (!family.isEmpty() || size > 0) {
-        font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        font = Lieve::Platform::fixedFont();
         if (!family.isEmpty()) {
             font.setFamily(family);
         }
@@ -339,7 +340,7 @@ MarkdownView::MarkdownView(QWidget *parent)
         m_bodyFont.setPixelSize(14);
     }
     m_em = std::max(10, QFontInfo(m_bodyFont).pixelSize());
-    m_codeFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    m_codeFont = Lieve::Platform::fixedFont();
     QTextDocument *doc = document();
     doc->setDefaultFont(m_bodyFont);
     doc->setDocumentMargin(0);

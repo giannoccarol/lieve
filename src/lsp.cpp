@@ -1,5 +1,7 @@
 #include "lsp.h"
 
+#include "platform.h"
+
 #include "lspclient.h"
 #include "lspcompletion.h"
 #include "mainwindow.h"
@@ -38,7 +40,6 @@
 #include <algorithm>
 #include <numeric>
 
-#include <signal.h>
 
 namespace Lieve
 {
@@ -565,7 +566,7 @@ LspClient *LspManager::clientFor(const QString &serverId)
     spec.environment = QProcessEnvironment::systemEnvironment();
     const QString node = findNode();
     if (!node.isEmpty()) { // so "#!/usr/bin/env node" helpers work with a minimal PATH too
-        spec.environment.insert(QStringLiteral("PATH"), QFileInfo(node).absolutePath() + QLatin1Char(':') + spec.environment.value(QStringLiteral("PATH")));
+        spec.environment.insert(QStringLiteral("PATH"), QFileInfo(node).absolutePath() + QDir::listSeparator() + spec.environment.value(QStringLiteral("PATH")));
     }
 
     auto *client = new LspClient(spec, this);
@@ -1898,7 +1899,7 @@ void LspManager::runTest(const QString &script)
             // The server dies: it is started again once.
             if (LspClient *client = m_clients.value(QStringLiteral("typescript"))) {
                 for (const qint64 pid : client->processIds()) {
-                    ::kill(-pid, SIGKILL);
+                    Platform::endGroup(pid, true);
                 }
             }
             next(500);

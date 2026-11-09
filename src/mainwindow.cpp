@@ -16,6 +16,7 @@
 #include "mergeconflicts.h"
 #include "npmscripts.h"
 #include "outline.h"
+#include "platform.h"
 #include "prettier.h"
 #include "problemspanel.h"
 #include "projectlist.h"
@@ -573,7 +574,9 @@ void MainWindow::buildUi()
     // NPM SCRIPTS: each script runs in a terminal of the panel.
     m_explorer->npmScripts()->setRunner([this](const QString &dir, const QString &title, const QString &command, QWidget *reuse) {
         QWidget *terminal = m_terminal->runCommand(dir, title, command, reuse);
-        setTerminalVisible(true);
+        if (TerminalPanel::embedded()) {
+            setTerminalVisible(true);
+        }
         return terminal;
     });
     connect(m_explorer->npmScripts(), &NpmScripts::openRequested, this, [this](const QString &path, int line, int column, int length) {
@@ -1193,6 +1196,10 @@ void MainWindow::setTerminalVisible(bool visible)
         if (m_terminal->isEmpty()) {
             m_terminal->setWorkingDirectory(m_root.isEmpty() ? QDir::homePath() : m_root);
             m_terminal->newTerminal();
+            if (m_terminal->isEmpty()) { // it opened outside (Windows Terminal): no empty panel
+                syncActivityBar();
+                return;
+            }
         }
         if (m_terminal->isHidden()) {
             m_terminal->show();
@@ -1217,6 +1224,10 @@ void MainWindow::setTerminalVisible(bool visible)
 // focus, hide it.
 void MainWindow::toggleTerminalFocus()
 {
+    if (!TerminalPanel::embedded()) { // terminals open in Windows Terminal
+        newTerminal();
+        return;
+    }
     const bool onTerminal = !m_problems || m_terminal->currentPage() != m_problems;
     if (m_terminal->isHidden()) {
         m_terminal->selectTerminal();
@@ -1235,7 +1246,9 @@ void MainWindow::newTerminal(const QString &dir)
         m_terminal->setWorkingDirectory(m_root.isEmpty() ? QDir::homePath() : m_root);
     }
     m_terminal->newTerminal(dir);
-    setTerminalVisible(true);
+    if (TerminalPanel::embedded()) {
+        setTerminalVisible(true);
+    }
 }
 
 // Like VS Code: Ctrl+Shift+M (`byFocus`) shows and focuses the Problems tab
@@ -1653,7 +1666,7 @@ void MainWindow::configureView(KTextEditor::View *view)
     const QString family = c.value(QStringLiteral("editor/fontFamily")).toString().trimmed();
     const double size = c.value(QStringLiteral("editor/fontSize"), 0).toDouble();
     if (!family.isEmpty() || size > 0) {
-        QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        QFont font = Lieve::Platform::fixedFont();
         if (!family.isEmpty()) {
             font.setFamily(family);
         }
@@ -1793,7 +1806,7 @@ void MainWindow::applySettings()
     const double size = c.value(QStringLiteral("editor/fontSize"), 0).toDouble();
     QFont font = KTextEditor::Editor::instance()->font(); // none configured: the editor's default
     if (!family.isEmpty() || size > 0) {
-        font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        font = Lieve::Platform::fixedFont();
         if (!family.isEmpty()) {
             font.setFamily(family);
         }
