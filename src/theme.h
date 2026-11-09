@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QIcon>
+#include <QList>
 #include <QString>
 
 class QApplication;
@@ -40,6 +41,9 @@ QString editorThemeName();
 // True when Lieve's own palette and stylesheet are in use ([ui] theme=editor):
 // selections are then a soft tint and keep the normal text colour.
 bool styled();
+// The 16 ANSI colours of Lieve's terminals (its Konsole profile and the
+// built-in terminal): those of VS Code's integrated terminal, Dark+ or Light+.
+QList<QColor> ansiColors(bool dark);
 // Lieve's private Konsole profile that runs `shell`, with the editor's colours
 // unless [terminal] matchEditor=false ("" if it could not be written).
 QString konsoleProfile(const QString &shell);

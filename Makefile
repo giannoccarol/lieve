@@ -46,10 +46,24 @@ QM :=
 endif
 OBJ := $(patsubst src/%.cpp,build/%.o,$(SRC)) $(MOC_SRC:.cpp=.o) build/qrc_lieve.o build/qrc_i18n.o
 
+# The built-in terminal (where the Konsole part is missing), vendored from Qt
+# Creator, see src/3rdparty/README.md: libvterm (C), the terminal view, and
+# libptyqt with ConPTY on Windows, a Unix pty elsewhere.
+PTY := $(if $(WINDOWS),conptyprocess,unixptyprocess)
+TERMINAL_SRC := $(wildcard src/3rdparty/terminal/*.cpp) src/3rdparty/ptyqt/ptyqt.cpp src/3rdparty/ptyqt/$(PTY).cpp
+TERMINAL_MOC := build/3rdparty/terminal/moc_terminalview.o build/3rdparty/terminal/moc_terminalsurface.o build/3rdparty/ptyqt/moc_$(PTY).o
+TERMINAL_OBJ := $(patsubst src/%.c,build/%.o,$(wildcard src/3rdparty/vterm/src/*.c)) \
+	$(patsubst src/%.cpp,build/%.o,$(TERMINAL_SRC)) $(TERMINAL_MOC) build/qrc_terminal.o
+OBJ += $(TERMINAL_OBJ)
+# Its code is static, inside the program (no DLL import/export).
+CXXFLAGS += -DTERMINALLIB_STATIC_LIBRARY
+# conptyprocess: CreateProcessAsUserW (ntdll is loaded at run time).
+TERMINAL_LIBS := $(if $(WINDOWS),-ladvapi32)
+
 all: $(BIN)
 
 $(BIN): $(OBJ)
-	$(CXX) $(LDFLAGS) -o $@ $^ $(QT_LIBS) $(KF_LIBS)
+	$(CXX) $(LDFLAGS) -o $@ $^ $(QT_LIBS) $(KF_LIBS) $(TERMINAL_LIBS)
 
 build/%.o: src/%.cpp | build
 	$(CXX) $(CXXFLAGS) $(QT_CFLAGS) $(KF_CFLAGS) -MMD -MP -c $< -o $@
@@ -87,6 +101,41 @@ translations:
 build/moc_%.o: build/moc_%.cpp
 	$(CXX) $(CXXFLAGS) $(QT_CFLAGS) $(KF_CFLAGS) -Isrc -c $< -o $@
 
+# The vendored code keeps its own warnings to itself (-w). ptyqt's Windows
+# part is written for the wide-character API (UNICODE).
+ifeq ($(origin CC),default)
+CC := gcc
+endif
+CFLAGS ?= -O2 -pipe
+VENDOR_CFLAGS = $(CFLAGS) -w $(if $(WINDOWS),,-fPIC) -Isrc/3rdparty/vterm/include
+VENDOR_CXXFLAGS = $(CXXFLAGS) $(QT_CFLAGS) -w -Isrc/3rdparty/vterm/include $(if $(WINDOWS),-DUNICODE -D_UNICODE -DNOMINMAX)
+
+build/3rdparty/vterm/%.o: src/3rdparty/vterm/%.c
+	@mkdir -p $(@D)
+	$(CC) $(VENDOR_CFLAGS) -MMD -MP -c $< -o $@
+
+build/3rdparty/%.o: src/3rdparty/%.cpp
+	@mkdir -p $(@D)
+	$(CXX) $(VENDOR_CXXFLAGS) -MMD -MP -c $< -o $@
+
+build/3rdparty/terminal/moc_%.cpp: src/3rdparty/terminal/%.h
+	@mkdir -p $(@D)
+	$(MOC) $< -o $@
+
+build/3rdparty/ptyqt/moc_%.cpp: src/3rdparty/ptyqt/%.h
+	@mkdir -p $(@D)
+	$(MOC) $< -o $@
+
+build/3rdparty/%.o: build/3rdparty/%.cpp
+	$(CXX) $(VENDOR_CXXFLAGS) -c $< -o $@
+
+# The lock shown instead of the cursor at a password prompt.
+build/qrc_terminal.cpp: src/3rdparty/terminal/terminal.qrc src/3rdparty/terminal/images/passwordlock.png | build
+	$(RCC) -name terminal $< -o $@
+
+build/qrc_terminal.o: build/qrc_terminal.cpp
+	$(CXX) $(CXXFLAGS) $(QT_CFLAGS) -c $< -o $@
+
 build:
 	mkdir -p build
 
@@ -108,6 +157,7 @@ build/tests/scopes_test$(EXE): build/scopes.o
 build/tests/lspedits_test$(EXE): build/lspedits.o
 build/tests/hunks_test$(EXE): build/linediff.o
 build/tests/staging_test$(EXE): build/linediff.o build/git.o build/moc_git.o build/prettier.o build/settings.o build/platform.o
+build/tests/terminalengine_test$(EXE): build/terminalengine.o
 
 build/tests:
 	mkdir -p build/tests

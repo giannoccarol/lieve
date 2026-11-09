@@ -36,6 +36,14 @@ bool isKdeSession();
 // emulator on Linux. With a `command`, the shell runs it and stays open.
 void openTerminal(const QString &dir, const QString &shell, const QString &title, const QString &command);
 
+// The shell `pid` of a terminal in the panel. shellReady(): it reads its
+// command line (Linux: it has turned the terminal's echo off; always true on
+// Windows, where it cannot be told). shellAtPrompt(): it runs no command
+// (Linux: the terminal's foreground process group is its own; Windows: it
+// has no child processes); false when it cannot be told.
+bool shellReady(qint64 pid);
+bool shellAtPrompt(qint64 pid);
+
 // The desktop's light/dark preference and accent colour, where Qt's palette
 // does not tell (GNOME and other desktops: the freedesktop portal; Windows:
 // its colour mode). Unknown values are left empty.

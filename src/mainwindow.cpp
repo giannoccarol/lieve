@@ -574,7 +574,7 @@ void MainWindow::buildUi()
     // NPM SCRIPTS: each script runs in a terminal of the panel.
     m_explorer->npmScripts()->setRunner([this](const QString &dir, const QString &title, const QString &command, QWidget *reuse) {
         QWidget *terminal = m_terminal->runCommand(dir, title, command, reuse);
-        if (TerminalPanel::embedded()) {
+        if (terminal) { // null: it opened outside Lieve
             setTerminalVisible(true);
         }
         return terminal;
@@ -1245,8 +1245,7 @@ void MainWindow::newTerminal(const QString &dir)
     if (!m_terminal->hasTerminals()) {
         m_terminal->setWorkingDirectory(m_root.isEmpty() ? QDir::homePath() : m_root);
     }
-    m_terminal->newTerminal(dir);
-    if (TerminalPanel::embedded()) {
+    if (m_terminal->newTerminal(dir)) { // null: it opened outside Lieve
         setTerminalVisible(true);
     }
 }

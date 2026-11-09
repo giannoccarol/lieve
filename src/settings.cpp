@@ -215,6 +215,9 @@ matchEditor=true
 ; Shell for new terminals: auto (your login shell, e.g. fish) or fish, zsh,
 ; bash or a path. It can also be chosen from the menu next to the terminal's +.
 shell=auto
+; The terminal in the panel: auto (or konsole) = Konsole's when Konsole is installed,
+; otherwise Lieve's built-in terminal; builtin = always the built-in terminal.
+engine=auto
 )");
 
 const char kUpdatesSection[] = QT_TRANSLATE_NOOP("Settings", R"(

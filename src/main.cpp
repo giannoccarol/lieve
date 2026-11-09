@@ -585,6 +585,11 @@ void setupTestHooks(QApplication &app)
         if (qEnvironmentVariableIsSet("LIEVE_TEST_TERMINAL")) {
             window->setTerminalVisible(true);
         }
+        // The built-in terminal, even where Konsole is installed: steps, see TerminalPanel::runTest().
+        if (qEnvironmentVariableIsSet("LIEVE_TEST_BUILTIN_TERMINAL")) {
+            window->setTerminalVisible(true);
+            window->findChild<TerminalPanel *>()->runTest(qEnvironmentVariable("LIEVE_TEST_BUILTIN_TERMINAL"));
+        }
         const QString search = qEnvironmentVariable("LIEVE_TEST_SEARCH");
         if (!search.isEmpty()) {
             window->showSearch(search);

@@ -1,0 +1,1556 @@
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0+ OR GPL-3.0 WITH Qt-GPL-exception-1.0
+
+#include "terminalsurface.h"
+#include "surfaceintegration.h"
+
+#include "keys.h"
+#include "scrollback.h"
+#include "sixel.h"
+
+#include <vterm.h>
+
+#include <algorithm>
+#include <chrono>
+#include <utility>
+
+#include <QHash>
+#include <QLoggingCategory>
+#include <QStringList>
+#include <QTimer>
+#include <QtMath>
+
+namespace TerminalSolution {
+
+using namespace std::chrono;
+using namespace std::chrono_literals;
+
+static Q_LOGGING_CATEGORY(log, "qtc.terminal.surface", QtWarningMsg);
+
+static QColor toQColor(const VTermColor &c)
+{
+    return QColor(qRgb(c.rgb.red, c.rgb.green, c.rgb.blue));
+};
+
+constexpr int batchFlushSize = 256;
+constexpr qsizetype maxClipboardWriteSize = 8 * 1024 * 1024;
+
+// Images live on until the cells that show them are gone, which cannot be seen
+// from an image, so they are kept to a budget instead. What falls out of it is
+// only shown as far back in the scrollback as the budget reaches.
+constexpr qint64 maxImageBytes = 64 * 1024 * 1024;
+
+// The cell size in device pixels a surface without a view in front of it lays
+// images out for
+constexpr QSizeF defaultCellSize{8, 16};
+
+// How long a synchronized update (DEC mode 2026) may hold a frame back before
+// it is shown anyway. The mode has no timeout in its specification, which
+// leaves an application that sets it and then dies or blocks able to freeze
+// what the reader sees. Measured against the worst case it is meant to cover
+// here - a full-screen program repainting a 1100 line transcript, which takes
+// ~40ms of parsing - this is more than an order of magnitude of headroom,
+// while a stall of it is short enough to read as a hitch rather than a hang.
+constexpr milliseconds synchronizedUpdateTimeout = 500ms;
+
+struct TerminalSurfacePrivate
+{
+    TerminalSurfacePrivate(TerminalSurface *surface, const QSize &initialGridSize)
+        : m_vterm(vterm_new(initialGridSize.height(), initialGridSize.width()), vterm_free)
+        , m_vtermScreen(vterm_obtain_screen(m_vterm.get()))
+        , m_scrollback(std::make_unique<Scrollback>(100'000'000))
+        , q(surface)
+    {
+        m_scrollback->setWidth(initialGridSize.width());
+    }
+
+    void flush()
+    {
+        if (m_writeBuffer.isEmpty())
+            return;
+
+        QByteArray data = m_writeBuffer.left(batchFlushSize);
+        qint64 result = m_writeToPty(data);
+
+        if (result != data.size()) {
+            // Not all data was written, remove the unwritten data from the array
+            data.resize(qMax(0, result));
+        }
+
+        // Remove the written data from the buffer
+        if (data.size() > 0)
+            m_writeBuffer = m_writeBuffer.mid(data.size());
+
+        if (!m_writeBuffer.isEmpty())
+            m_delayWriteTimer.start();
+    }
+
+    void sendToPty(const QByteArray &data)
+    {
+        // If its just a couple of chars, or we already have data in the writeBuffer,
+        // add the new data to the write buffer and start the delay timer
+        if (data.size() < batchFlushSize || !m_writeBuffer.isEmpty()) {
+            m_writeBuffer.append(data);
+            m_delayWriteTimer.start();
+            return;
+        }
+
+        // Try to write the data ...
+        qint64 result = m_writeToPty(data);
+
+        if (result != data.size()) {
+            // if writing failed, append the data to the writeBuffer and start the delay timer
+
+            // Check if partial data may have already been written ...
+            if (result <= 0)
+                m_writeBuffer.append(data);
+            else
+                m_writeBuffer.append(data.mid(result));
+
+            m_delayWriteTimer.start();
+        }
+    }
+
+    void init()
+    {
+        m_delayWriteTimer.setInterval(1);
+        m_delayWriteTimer.setSingleShot(true);
+
+        QObject::connect(&m_delayWriteTimer, &QTimer::timeout, &m_delayWriteTimer, [this] {
+            flush();
+        });
+
+        m_synchronizedUpdateTimeout.setInterval(synchronizedUpdateTimeout);
+        m_synchronizedUpdateTimeout.setSingleShot(true);
+
+        QObject::connect(&m_synchronizedUpdateTimeout,
+                         &QTimer::timeout,
+                         &m_synchronizedUpdateTimeout,
+                         [this] {
+                             // Reset through the mode rather than by ending
+                             // the hold directly: an application that asks
+                             // whether the terminal is still honouring the
+                             // mode has to be told that it is not.
+                             VTermValue val{.boolean = false};
+                             vterm_state_set_termprop(vterm_obtain_state(m_vterm.get()),
+                                                      VTERM_PROP_SYNCHRONIZEDOUTPUT,
+                                                      &val);
+                         });
+
+        vterm_set_utf8(m_vterm.get(), true);
+
+        static auto writeToPty = [](const char *s, size_t len, void *user) {
+            auto p = static_cast<TerminalSurfacePrivate *>(user);
+            p->sendToPty(QByteArray(s, len));
+        };
+
+        vterm_output_set_callback(m_vterm.get(), writeToPty, this);
+
+        memset(&m_vtermScreenCallbacks, 0, sizeof(m_vtermScreenCallbacks));
+
+        m_vtermScreenCallbacks.damage = [](VTermRect rect, void *user) {
+            auto p = static_cast<TerminalSurfacePrivate *>(user);
+            p->invalidate(rect);
+            return 1;
+        };
+        m_vtermScreenCallbacks.sb_pushline4 =
+            [](int cols, const VTermScreenCell *cells, bool continuation, void *user) {
+                auto p = static_cast<TerminalSurfacePrivate *>(user);
+                return p->sb_pushline(cols, cells, continuation);
+            };
+        m_vtermScreenCallbacks.sb_popline = [](int cols, VTermScreenCell *cells, void *user) {
+            auto p = static_cast<TerminalSurfacePrivate *>(user);
+            return p->sb_popline(cols, cells);
+        };
+        m_vtermScreenCallbacks.settermprop = [](VTermProp prop, VTermValue *val, void *user) {
+            auto p = static_cast<TerminalSurfacePrivate *>(user);
+            return p->setTerminalProperties(prop, val);
+        };
+        m_vtermScreenCallbacks.movecursor =
+            [](VTermPos pos, VTermPos oldpos, int visible, void *user) {
+                auto p = static_cast<TerminalSurfacePrivate *>(user);
+                return p->movecursor(pos, oldpos, visible);
+            };
+        m_vtermScreenCallbacks.sb_clear = [](void *user) {
+            auto p = static_cast<TerminalSurfacePrivate *>(user);
+            emit p->q->cleared();
+            return p->sb_clear();
+        };
+        m_vtermScreenCallbacks.bell = [](void *user) {
+            auto p = static_cast<TerminalSurfacePrivate *>(user);
+            if (p->m_surfaceIntegration)
+                p->m_surfaceIntegration->onBell();
+            return 1;
+        };
+
+        vterm_screen_set_callbacks(m_vtermScreen, &m_vtermScreenCallbacks, this);
+        vterm_screen_callbacks_has_pushline4(m_vtermScreen);
+        vterm_screen_set_damage_merge(m_vtermScreen, VTERM_DAMAGE_SCROLL);
+        vterm_screen_enable_altscreen(m_vtermScreen, true);
+
+        memset(&m_vtermStateFallbacks, 0, sizeof(m_vtermStateFallbacks));
+
+        m_vtermStateFallbacks.osc = [](int cmd, VTermStringFragment fragment, void *user) {
+            auto p = static_cast<TerminalSurfacePrivate *>(user);
+            return p->osc(cmd, fragment);
+        };
+
+        m_vtermStateFallbacks.dcs =
+            [](const char *command, size_t commandlen, VTermStringFragment fragment, void *user) {
+                auto p = static_cast<TerminalSurfacePrivate *>(user);
+                return p->dcs({command, qsizetype(commandlen)}, fragment);
+            };
+
+        m_vtermStateFallbacks.csi = [](const char *leader,
+                                       const long args[],
+                                       int argcount,
+                                       const char *intermed,
+                                       char command,
+                                       void *user) {
+            auto p = static_cast<TerminalSurfacePrivate *>(user);
+            return p->csi(leader, args, argcount, intermed, command);
+        };
+
+        VTermState *vts = vterm_obtain_state(m_vterm.get());
+        vterm_state_set_unrecognised_fallbacks(vts, &m_vtermStateFallbacks, this);
+
+        memset(&m_vtermSelectionCallbacks, 0, sizeof(m_vtermSelectionCallbacks));
+
+        m_vtermSelectionCallbacks.set =
+            [](VTermSelectionMask mask, VTermStringFragment frag, void *user) {
+                ClipboardTargets targets;
+                if (mask & VTERM_SELECTION_CLIPBOARD)
+                    targets |= ClipboardTarget::Clipboard;
+                // SELECT is what libvterm makes of the parameter xterm
+                // documents as the default, an empty one, which is the form
+                // several programs send. xterm reads it as the primary
+                // selection, so that is what it names here. The cut buffers
+                // it also sets have no counterpart and are ignored, as is
+                // SECONDARY.
+                if (mask & (VTERM_SELECTION_PRIMARY | VTERM_SELECTION_SELECT))
+                    targets |= ClipboardTarget::Selection;
+                if (!targets)
+                    return 0;
+
+                auto p = static_cast<TerminalSurfacePrivate *>(user);
+                if (frag.initial) {
+                    p->m_selectionBuffer.clear();
+                    p->m_selectionTooLong = false;
+                }
+
+                if (p->m_selectionTooLong)
+                    return 0;
+
+                if (p->m_selectionBuffer.size() + qsizetype(frag.len) > maxClipboardWriteSize) {
+                    p->m_selectionTooLong = true;
+                    p->m_selectionBuffer.clear();
+                    p->m_selectionBuffer.squeeze();
+                    return 0;
+                }
+
+                p->m_selectionBuffer.append(frag.str, frag.len);
+                if (!frag.final)
+                    return 1;
+
+                if (p->m_surfaceIntegration)
+                    p->m_surfaceIntegration->onSetClipboard(p->m_selectionBuffer, targets);
+
+                p->m_selectionBuffer.clear();
+                p->m_selectionBuffer.squeeze();
+                return 1;
+            };
+
+        vterm_state_set_selection_callbacks(
+            vts, &m_vtermSelectionCallbacks, this, buffer, sizeof buffer);
+
+        vterm_state_set_bold_highbright(vts, true);
+
+        VTermColor fg;
+        VTermColor bg;
+        vterm_color_indexed(&fg, ColorIndex::Foreground);
+        vterm_color_indexed(&bg, ColorIndex::Background);
+        vterm_state_set_default_colors(vts, &fg, &bg);
+
+        for (int i = 0; i < 16; ++i) {
+            VTermColor col;
+            vterm_color_indexed(&col, i);
+            vterm_state_set_palette_color(vts, i, &col);
+        }
+
+        vterm_screen_reset(m_vtermScreen, 1);
+    }
+
+    QSize liveSize() const
+    {
+        int rows;
+        int cols;
+        vterm_get_size(m_vterm.get(), &rows, &cols);
+
+        return QSize(cols, rows);
+    }
+
+    std::variant<int, QColor> toVariantColor(const VTermColor &color)
+    {
+        if (color.type & VTERM_COLOR_DEFAULT_BG)
+            return ColorIndex::Background;
+        else if (color.type & VTERM_COLOR_DEFAULT_FG)
+            return ColorIndex::Foreground;
+        else if (color.type & VTERM_COLOR_INDEXED) {
+            if (color.indexed.idx >= 16) {
+                VTermColor c = color;
+                vterm_state_convert_color_to_rgb(vterm_obtain_state(m_vterm.get()), &c);
+                return toQColor(c);
+            }
+            return color.indexed.idx;
+        } else if (color.type == VTERM_COLOR_RGB)
+            return toQColor(color);
+        else
+            return -1;
+    }
+
+    TerminalCell toCell(const VTermScreenCell &cell)
+    {
+        TerminalCell result;
+        result.width = cell.width;
+        const auto *chars = reinterpret_cast<const char32_t *>(cell.chars);
+        const auto *charsEnd = std::find(chars, chars + VTERM_MAX_CHARS_PER_CELL, char32_t(0));
+        result.text = QString::fromUcs4(chars, charsEnd - chars);
+
+        const VTermColor *bg = &cell.bg;
+        const VTermColor *fg = &cell.fg;
+
+        if (static_cast<bool>(cell.attrs.reverse))
+            std::swap(fg, bg);
+
+        result.backgroundColor = toVariantColor(*bg);
+        result.foregroundColor = toVariantColor(*fg);
+
+        result.bold = cell.attrs.bold;
+        result.strikeOut = cell.attrs.strike;
+
+        if (cell.attrs.underline > 0) {
+            result.underlineStyle = QTextCharFormat::NoUnderline;
+            switch (cell.attrs.underline) {
+            case VTERM_UNDERLINE_SINGLE:
+                result.underlineStyle = QTextCharFormat::SingleUnderline;
+                break;
+            case VTERM_UNDERLINE_DOUBLE:
+                // TODO: Double underline
+                result.underlineStyle = QTextCharFormat::SingleUnderline;
+                break;
+            case VTERM_UNDERLINE_CURLY:
+                result.underlineStyle = QTextCharFormat::WaveUnderline;
+                break;
+            case VTERM_UNDERLINE_DASHED:
+                result.underlineStyle = QTextCharFormat::DashUnderline;
+                break;
+            case VTERM_UNDERLINE_DOTTED:
+                result.underlineStyle = QTextCharFormat::DotLine;
+                break;
+            }
+        }
+
+        result.strikeOut = cell.attrs.strike;
+        result.image = cell.image;
+
+        return result;
+    }
+
+    // Every invalidation the surface reports goes through here, which is what
+    // makes holding one possible. Damage still arrives during a synchronized
+    // update - libvterm flushes what it has merged when a scroll reaches it
+    // that it cannot merge into it, and an image that evicts the ones before
+    // it invalidates what showed them - and reporting it would be asking for
+    // half of a frame to be painted. It is collected and reported with the
+    // rest of the frame instead.
+    void emitInvalidated(const QRect &damage)
+    {
+        if (m_synchronizedUpdate) {
+            m_synchronizedUpdateDamage = m_synchronizedUpdateDamage.united(damage);
+            return;
+        }
+
+        emit q->invalidated(damage);
+    }
+
+    // Callbacks from vterm
+    void invalidate(VTermRect rect)
+    {
+        m_blankValid = false;
+
+        if (!m_altscreen) {
+            rect.start_row += m_scrollback->size();
+            rect.end_row += m_scrollback->size();
+        }
+
+        emitInvalidated(
+            QRect{QPoint{rect.start_col, rect.start_row}, QPoint{rect.end_col, rect.end_row - 1}});
+    }
+
+    int sb_pushline(int cols, const VTermScreenCell *cells, bool continuation)
+    {
+        if (m_reflowing)
+            return 1;
+
+        auto oldSize = m_scrollback->size();
+        m_scrollback->appendRow(cols, cells, continuation);
+        if (m_scrollback->size() != oldSize)
+            emit q->fullSizeChanged(q->fullSize());
+        return 1;
+    }
+
+    int sb_popline(int cols, VTermScreenCell *cells)
+    {
+        if (m_reflowing)
+            return 0;
+
+        if (!m_scrollback->popRow(cols, cells))
+            return 0;
+
+        emit q->fullSizeChanged(q->fullSize());
+        return 1;
+    }
+
+    int sb_clear()
+    {
+        m_scrollback->clear();
+        emit q->fullSizeChanged(q->fullSize());
+        return 1;
+    }
+
+    // OSC 8 ; params ; uri ST, see
+    // https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda
+    void setHyperlink(const VTermStringFragment &fragment)
+    {
+        static constexpr qsizetype maxUriLength = 4096;
+
+        if (fragment.initial) {
+            m_uriBuffer.clear();
+            m_uriTooLong = false;
+        }
+
+        if (m_uriBuffer.size() + qsizetype(fragment.len) > maxUriLength) {
+            m_uriTooLong = true;
+            m_uriBuffer.clear();
+        }
+
+        if (!m_uriTooLong)
+            m_uriBuffer.append(fragment.str, fragment.len);
+
+        if (!fragment.final)
+            return;
+
+        VTermState *state = vterm_obtain_state(m_vterm.get());
+
+        const qsizetype separator = m_uriBuffer.indexOf(';');
+        const bool ends = separator < 0 || separator == m_uriBuffer.size() - 1;
+        if (m_uriTooLong || ends) {
+            vterm_state_set_uri(state, 0);
+            return;
+        }
+
+        // The params are part of the key: two links with the same uri but a different
+        // id are distinct links.
+        const QByteArray key = m_uriBuffer;
+
+        const auto it = m_uriIds.constFind(key);
+        int id = 0;
+        if (it != m_uriIds.constEnd()) {
+            id = *it;
+        } else {
+            m_uris.append(QString::fromUtf8(m_uriBuffer.sliced(separator + 1)));
+            id = int(m_uris.size());
+            m_uriIds.insert(key, id);
+        }
+
+        vterm_state_set_uri(state, id);
+    }
+
+    static bool isSpacer(const VTermScreenCell &cell)
+    {
+        return cell.chars[0] == static_cast<uint32_t>(-1);
+    }
+
+    bool screenRowIsContinuation(int row)
+    {
+        VTermState *state = vterm_obtain_state(m_vterm.get());
+        const VTermLineInfo *info = vterm_state_get_lineinfo(state, row);
+        return info && info->continuation;
+    }
+
+    static int cellColumns(const VTermScreenCell &cell)
+    {
+        return cell.width < 1 ? 1 : int(cell.width);
+    }
+
+    int lastUsedScreenRow(int cursorRow)
+    {
+        const int cols = liveSize().width();
+        for (int y = liveSize().height() - 1; y > cursorRow; --y) {
+            for (int x = 0; x < cols; ++x) {
+                VTermScreenCell cell;
+                VTermPos pos{y, x};
+                if (!vterm_screen_get_cell(m_vtermScreen, pos, &cell))
+                    continue;
+                if (!isSpacer(cell) && cell.chars[0] != 0)
+                    return y;
+            }
+        }
+        return cursorRow;
+    }
+
+    struct CursorInLine
+    {
+        int line = -1;
+        int rowInLine = 0;
+        int column = 0;
+    };
+
+    const VTermScreenCell &blankCell()
+    {
+        if (!m_blankValid) {
+            // A blank carries no text, no hyperlink and no attributes, only the
+            // colours it is painted with. Those are the screen's defaults, and
+            // asking the state for them keeps them the only thing a blank
+            // carries: reading them off the cell at (0, 0) instead, as this
+            // did, handed that cell's uri and attributes to every blank in the
+            // scrollback, so an OSC 8 hyperlink written at the top left turned
+            // the unwritten tail of every scrolled-back row into a link to it.
+            // set_default_colors marks the colours it stores as the defaults,
+            // so toVariantColor still resolves them through the theme.
+            m_blank = {};
+            m_blank.width = 1;
+            vterm_state_get_default_colors(vterm_obtain_state(m_vterm.get()),
+                                           &m_blank.fg,
+                                           &m_blank.bg);
+            m_blankValid = true;
+            m_scrollback->setBlank(m_blank);
+        }
+        return m_blank;
+    }
+
+    std::vector<Scrollback::Line> gatherScreenLines(CursorInLine *cursorInLine)
+    {
+        VTermState *state = vterm_obtain_state(m_vterm.get());
+        VTermPos cursor;
+        vterm_state_get_cursorpos(state, &cursor);
+        const int cursorCol = cursor.col + vterm_state_get_at_phantom(state);
+
+        const int cols = liveSize().width();
+        const int lastRow = lastUsedScreenRow(cursor.row);
+
+        std::vector<Scrollback::Line> lines;
+        bool joined = false;
+        if (screenRowIsContinuation(0) && m_scrollback->lineCount() > 0) {
+            lines.push_back(m_scrollback->takeLastLine());
+            joined = true;
+        } else {
+            m_scrollback->closeLastLine();
+        }
+
+        std::vector<VTermScreenCell> rowCells(static_cast<size_t>(cols));
+        int rowsInLine = joined ? lines.back().rowCount(cols) : 0;
+
+        for (int y = 0; y <= lastRow; ++y) {
+            for (int x = 0; x < cols; ++x) {
+                VTermPos pos{y, x};
+                if (!vterm_screen_get_cell(m_vtermScreen, pos, &rowCells[size_t(x)]))
+                    rowCells[size_t(x)] = blankCell();
+            }
+
+            const bool continuation = y == 0 ? joined : screenRowIsContinuation(y);
+            if (!continuation || lines.empty()) {
+                lines.emplace_back();
+                rowsInLine = 0;
+            }
+
+            Scrollback::Line &line = lines.back();
+
+            int take = cols;
+            const bool wrapsIntoNext = y < lastRow && screenRowIsContinuation(y + 1);
+            if (!wrapsIntoNext) {
+                while (take > 0 && rowCells[size_t(take - 1)].chars[0] == 0)
+                    --take;
+            } else if (take > 0 && rowCells[size_t(take - 1)].chars[0] == 0) {
+                VTermScreenCell next;
+                const VTermPos pos{y + 1, 0};
+                if (vterm_screen_get_cell(m_vtermScreen, pos, &next) && cellColumns(next) == 2)
+                    --take;
+            }
+
+            if (y == cursor.row)
+                *cursorInLine = {int(lines.size()) - 1, rowsInLine, cursorCol};
+
+            line.appendChars(rowCells.data(), take);
+            ++rowsInLine;
+        }
+
+        if (lines.empty())
+            lines.emplace_back();
+        if (cursorInLine->line < 0)
+            cursorInLine->line = int(lines.size()) - 1;
+
+        return lines;
+    }
+
+    void relayout(QSize newSize)
+    {
+        const int newCols = newSize.width();
+
+        CursorInLine cursor;
+        std::vector<Scrollback::Line> lines = gatherScreenLines(&cursor);
+
+        const auto totalRows = [&] {
+            int rows = 0;
+            for (const Scrollback::Line &line : lines)
+                rows += line.rowCount(newCols);
+            return rows;
+        };
+
+        while (m_refillFromScrollback && totalRows() < newSize.height()
+               && m_scrollback->lineCount() > 0) {
+            lines.insert(lines.begin(), m_scrollback->takeLastLine());
+            ++cursor.line;
+        }
+
+        const int total = totalRows();
+
+        int cursorRow = cursor.rowInLine;
+        for (int i = 0; i < cursor.line; ++i)
+            cursorRow += lines[size_t(i)].rowCount(newCols);
+
+        const int firstScreenRow = qMax(0, qMax(total, cursorRow + 1) - newSize.height());
+        cursorRow = qMax(cursorRow, firstScreenRow);
+
+        m_reflowing = true;
+        m_blankValid = false;
+
+        m_scrollback->setWidth(newCols);
+
+        size_t first = 0;
+        bool firstIsContinuation = false;
+        for (int remaining = firstScreenRow; remaining > 0 && first < lines.size();) {
+            const int rows = lines[first].rowCount(newCols);
+            if (rows <= remaining) {
+                remaining -= rows;
+                m_scrollback->appendLine(std::move(lines[first]));
+                ++first;
+            } else {
+                m_scrollback->appendLine(lines[first].takeRows(newCols, remaining));
+                remaining = 0;
+                firstIsContinuation = true;
+            }
+        }
+
+        vterm_set_size(m_vterm.get(), newSize.height(), newCols);
+
+        static const QByteArray eraseDisplay{"\x1b[H\x1b[2J"};
+        vterm_input_write(m_vterm.get(), eraseDisplay.constData(), eraseDisplay.size());
+
+        VTermState *state = vterm_obtain_state(m_vterm.get());
+
+        int y = 0;
+        for (size_t i = first; i < lines.size() && y < newSize.height(); ++i) {
+            const Scrollback::Line &line = lines[i];
+            const int rows = line.rowCount(newCols);
+
+            for (int r = 0; r < rows && y < newSize.height(); ++r, ++y) {
+                const Scrollback::Line::Span span = line.rowSpan(newCols, r);
+
+                int x = 0;
+                for (int k = 0; k < span.count; ++k) {
+                    const VTermScreenCell &cell = line.chars()[size_t(span.first) + size_t(k)];
+                    const VTermPos pos{y, x};
+                    vterm_screen_set_cell(m_vtermScreen, pos, &cell);
+                    x += cellColumns(cell);
+                }
+
+                const bool continuation = r > 0 || (i == first && firstIsContinuation);
+                const VTermLineInfo info{.doublewidth = 0,
+                                         .doubleheight = 0,
+                                         .continuation = continuation ? 1u : 0u};
+                vterm_state_set_lineinfo(state, y, &info);
+            }
+        }
+
+        const int cursorScreenRow = cursorRow - firstScreenRow;
+        int cursorColumn = qMin(cursor.column, newCols);
+        if (cursorColumn < newCols) {
+            VTermScreenCell cell;
+            const VTermPos pos{cursorScreenRow, cursorColumn};
+            if (vterm_screen_get_cell(m_vtermScreen, pos, &cell) && isSpacer(cell))
+                --cursorColumn;
+        }
+
+        vterm_state_set_cursorpos(state, VTermPos{cursorScreenRow, cursorColumn});
+
+        m_reflowing = false;
+
+        vterm_screen_flush_damage(m_vtermScreen);
+        emit q->fullSizeChanged(q->fullSize());
+        emitInvalidated(QRect{{0, 0}, q->fullSize()});
+    }
+
+    int uriIdAt(QPoint gridPos)
+    {
+        if (gridPos.x() < 0 || gridPos.y() < 0 || gridPos.x() >= liveSize().width()
+            || gridPos.y() >= q->fullSize().height()) {
+            return 0;
+        }
+
+        const VTermScreenCell *cell = cellAt(gridPos.x(), gridPos.y());
+        return cell ? cell->uri : 0;
+    }
+
+    void reportBackgroundColor(const VTermStringFragment &fragment)
+    {
+        // Only "?" is answered, and a color spec is the longest thing that may
+        // legitimately arrive instead.
+        static constexpr qsizetype maxColorQueryLength = 64;
+
+        if (fragment.initial) {
+            m_colorQueryBuffer.clear();
+            m_colorQueryTooLong = false;
+        }
+
+        if (m_colorQueryBuffer.size() + qsizetype(fragment.len) > maxColorQueryLength) {
+            m_colorQueryTooLong = true;
+            m_colorQueryBuffer.clear();
+        }
+
+        if (!m_colorQueryTooLong)
+            m_colorQueryBuffer.append(fragment.str, fragment.len);
+
+        if (!fragment.final || m_colorQueryTooLong || m_colorQueryBuffer != "?" || !m_colorProvider)
+            return;
+
+        const QColor color = m_colorProvider(ColorIndex::Background);
+        if (!color.isValid())
+            return;
+
+        // 8 bits per channel widened to the 16 the report is written in.
+        sendToPty(QByteArray("\x1b]11;")
+                  + QString::asprintf("rgb:%04x/%04x/%04x",
+                                      color.red() * 257,
+                                      color.green() * 257,
+                                      color.blue() * 257)
+                        .toLatin1()
+                  + "\x1b\\");
+    }
+
+    int osc(int cmd, const VTermStringFragment &fragment)
+    {
+        if (cmd == 8) {
+            setHyperlink(fragment);
+            return 1;
+        }
+
+        if (cmd == 11) {
+            reportBackgroundColor(fragment);
+            return 1;
+        }
+
+        if (m_surfaceIntegration) {
+            m_surfaceIntegration->onOsc(cmd,
+                                        {fragment.str, fragment.len},
+                                        fragment.initial,
+                                        fragment.final);
+        }
+
+        return 1;
+    }
+
+    static bool isSixel(QByteArrayView command)
+    {
+        // Other DCS strings end in q as well, XTGETTCAP's DCS + q for one, so
+        // the introducer only counts as a sixel if all of it is P1;P2;P3.
+        if (command.isEmpty() || command.back() != 'q')
+            return false;
+
+        for (const char c : command.first(command.size() - 1)) {
+            if ((c < '0' || c > '9') && c != ';')
+                return false;
+        }
+
+        return true;
+    }
+
+    int dcs(QByteArrayView command, const VTermStringFragment &fragment)
+    {
+        if (!isSixel(command))
+            return 0;
+
+        VTermState *state = vterm_obtain_state(m_vterm.get());
+
+        if (fragment.initial) {
+            m_sixel.start();
+
+            // Control characters keep their meaning inside the data string, so
+            // the line breaks some encoders wrap their output at move the
+            // cursor. The image belongs where the sequence started.
+            vterm_state_get_cursorpos(state, &m_sixelOrigin);
+            m_sixelOrigin.col += vterm_state_get_at_phantom(state);
+        }
+
+        m_sixel.addData({fragment.str, qsizetype(fragment.len)});
+
+        if (fragment.final) {
+            vterm_state_set_cursorpos(state, m_sixelOrigin);
+            placeImage(m_sixel.takeImage());
+        }
+
+        return 1;
+    }
+
+    QSize pixelSize() const
+    {
+        const QSize live = liveSize();
+        return QSize(qMin(qRound(live.width() * m_cellSize.width()), SixelDecoder::maxDimension),
+                     qMin(qRound(live.height() * m_cellSize.height()), SixelDecoder::maxDimension));
+    }
+
+    void reply(const QByteArray &response)
+    {
+        m_writeBuffer.append(response);
+        m_delayWriteTimer.start();
+    }
+
+    // XTSMGRAPHICS, CSI ? Pi ; Pa ; Pv S. Applications that draw images ask how
+    // many colors and how much room they have before they encode anything.
+    int graphicsAttributes(const long args[], int argcount)
+    {
+        const long item = argcount > 0 ? CSI_ARG_OR(args[0], 0) : 0;
+
+        if (item == 1) {
+            reply("\x1b[?1;0;" + QByteArray::number(SixelDecoder::colorRegisterCount) + "S");
+            return 1;
+        }
+
+        if (item == 2) {
+            const QSize size = pixelSize();
+            reply("\x1b[?2;0;" + QByteArray::number(size.width()) + ";"
+                  + QByteArray::number(size.height()) + "S");
+            return 1;
+        }
+
+        return 0;
+    }
+
+    // The reports of CSI t, which are the other way to ask for the room an
+    // image has. The window manipulations that share the sequence are ignored.
+    int windowReport(const long args[], int argcount)
+    {
+        const long what = argcount > 0 ? CSI_ARG_OR(args[0], 0) : 0;
+
+        switch (what) {
+        case 14: { // text area size in pixels
+            const QSize size = pixelSize();
+            reply("\x1b[4;" + QByteArray::number(size.height()) + ";"
+                  + QByteArray::number(size.width()) + "t");
+            return 1;
+        }
+        case 16: // cell size in pixels
+            reply("\x1b[6;" + QByteArray::number(qRound(m_cellSize.height())) + ";"
+                  + QByteArray::number(qRound(m_cellSize.width())) + "t");
+            return 1;
+        case 18: { // text area size in cells
+            const QSize live = liveSize();
+            reply("\x1b[8;" + QByteArray::number(live.height()) + ";"
+                  + QByteArray::number(live.width()) + "t");
+            return 1;
+        }
+        }
+
+        return 0;
+    }
+
+    int csi(const char *leader, const long args[], int argcount, const char *intermed, char command)
+    {
+        if (intermed)
+            return 0;
+
+        if (leader && qstrcmp(leader, "?") == 0 && command == 'S')
+            return graphicsAttributes(args, argcount);
+
+        if (!leader && command == 't')
+            return windowReport(args, argcount);
+
+        return 0;
+    }
+
+    // A cell keeps the id it was written with for as long as it is kept, so an
+    // id that came round again would make the cells of the image that had it
+    // show the new one. Every tag is taken off the cells before that happens,
+    // which costs one pass over both screens and the scrollback for as many
+    // images as there are ids.
+    void forgetImages()
+    {
+        vterm_screen_forget_images(m_vtermScreen);
+        m_scrollback->visitCells([](VTermScreenCell &cell) { cell.image = 0; });
+
+        m_images.clear();
+        m_imageOrder.clear();
+        m_imageBytes = 0;
+
+        emitInvalidated(QRect{{0, 0}, q->fullSize()});
+    }
+
+    int addImage(const QImage &image)
+    {
+        if (m_lastImageId == ImageCell::maxId) {
+            forgetImages();
+            m_lastImageId = 0;
+        }
+        ++m_lastImageId;
+
+        m_images.insert(m_lastImageId, Image{image, m_cellSize});
+        m_imageOrder.append(m_lastImageId);
+        m_imageBytes += image.sizeInBytes();
+
+        while (m_imageBytes > maxImageBytes && m_imageOrder.size() > 1)
+            m_imageBytes -= m_images.take(m_imageOrder.takeFirst()).image.sizeInBytes();
+
+        return m_lastImageId;
+    }
+
+    // Puts the image at the cursor, one tile per cell, and leaves the cursor on
+    // a fresh line below it, as a terminal with sixel scrolling does.
+    void placeImage(const QImage &image)
+    {
+        if (image.isNull() || m_cellSize.isEmpty())
+            return;
+
+        VTermState *state = vterm_obtain_state(m_vterm.get());
+        VTermPos pos;
+
+        if (vterm_state_get_at_phantom(state)) {
+            // The last column is written, the image belongs on the next line
+            vterm_state_index(state);
+            vterm_state_get_cursorpos(state, &pos);
+            vterm_state_set_cursorpos(state, VTermPos{.row = pos.row, .col = 0});
+        }
+
+        vterm_state_get_cursorpos(state, &pos);
+
+        const QSize live = liveSize();
+        const int startColumn = qBound(0, pos.col, live.width() - 1);
+        const int rows = qMin(qCeil(image.height() / m_cellSize.height()), ImageCell::maxRow + 1);
+        const int columns = qMin(qCeil(image.width() / m_cellSize.width()),
+                                 qMin(live.width() - startColumn, ImageCell::maxColumn + 1));
+
+        if (rows < 1 || columns < 1)
+            return;
+
+        const int id = addImage(image);
+
+        VTermScreenCell cell{};
+        // An image cell is not blank: the space keeps it from being trimmed as
+        // trailing whitespace when the lines are reflowed.
+        cell.chars[0] = ' ';
+        cell.width = 1;
+        vterm_state_get_default_colors(state, &cell.fg, &cell.bg);
+
+        for (int row = 0; row < rows; ++row) {
+            vterm_state_get_cursorpos(state, &pos);
+
+            for (int column = 0; column < columns; ++column) {
+                cell.image = ImageCell::tag(id, column, row);
+                const VTermPos cellPos{.row = pos.row, .col = startColumn + column};
+                vterm_screen_set_cell(m_vtermScreen, cellPos, &cell);
+            }
+
+            invalidate(VTermRect{.start_row = pos.row,
+                                 .end_row = pos.row + 1,
+                                 .start_col = startColumn,
+                                 .end_col = startColumn + columns});
+
+            // Scrolls once the image reaches the bottom, so that the row the
+            // cursor ends up on is below the image either way.
+            vterm_state_index(state);
+        }
+
+        vterm_state_get_cursorpos(state, &pos);
+        vterm_state_set_cursorpos(state, VTermPos{.row = pos.row, .col = 0});
+    }
+
+    int setTerminalProperties(VTermProp prop, VTermValue *val)
+    {
+        switch (prop) {
+        case VTERM_PROP_CURSORVISIBLE: {
+            Cursor old = q->cursor();
+            m_cursor.visible = val->boolean;
+            emit q->cursorChanged(old, q->cursor());
+            break;
+        }
+        case VTERM_PROP_CURSORBLINK: {
+            Cursor old = q->cursor();
+            m_cursor.blink = val->boolean;
+            emit q->cursorChanged(old, q->cursor());
+            break;
+        }
+        case VTERM_PROP_CURSORSHAPE: {
+            Cursor old = q->cursor();
+            m_cursor.shape = (Cursor::Shape) val->number;
+            emit q->cursorChanged(old, q->cursor());
+            break;
+        }
+        case VTERM_PROP_ICONNAME:
+            break;
+        case VTERM_PROP_TITLE:
+            if (m_surfaceIntegration)
+                m_surfaceIntegration->onTitle(QString::fromUtf8(val->string.str, val->string.len));
+            break;
+        case VTERM_PROP_ALTSCREEN:
+            m_altscreen = val->boolean;
+            emit q->altscreenChanged(m_altscreen);
+            break;
+        case VTERM_PROP_MOUSE:
+            qCDebug(log) << "Ignoring VTERM_PROP_MOUSE" << val->number;
+            break;
+        case VTERM_PROP_REVERSE:
+            qCDebug(log) << "Ignoring VTERM_PROP_REVERSE" << val->boolean;
+            break;
+        case VTERM_N_PROPS:
+            break;
+        case VTERM_PROP_FOCUSREPORT:
+            break;
+        case VTERM_PROP_SYNCHRONIZEDOUTPUT:
+            if (val->boolean)
+                beginSynchronizedUpdate();
+            else
+                endSynchronizedUpdate();
+            break;
+        }
+        return 1;
+    }
+
+    // An application that composes a frame out of many writes brackets them in
+    // DEC mode 2026, so that what is half-drawn never reaches the screen. It is
+    // held by not emitting the damage: the cells are written as they arrive and
+    // the view is told about them in one go at the end.
+    void beginSynchronizedUpdate()
+    {
+        if (m_synchronizedUpdate)
+            return;
+        m_synchronizedUpdate = true;
+        m_synchronizedUpdateTimeout.start();
+        emit q->synchronizedUpdateChanged(true);
+    }
+
+    void endSynchronizedUpdate()
+    {
+        if (!m_synchronizedUpdate)
+            return;
+        m_synchronizedUpdate = false;
+        m_synchronizedUpdateTimeout.stop();
+
+        // Before the damage: a consumer showing the frame it kept for the
+        // length of the update has to drop it before it is asked to paint.
+        emit q->synchronizedUpdateChanged(false);
+
+        // Most of the frame is still pending in libvterm, because flush() held
+        // it there. Report it here, or an update ended by the timeout would
+        // reach no one until the next write.
+        vterm_screen_flush_damage(m_vtermScreen);
+        if (m_synchronizedUpdateDamage.isValid())
+            emitInvalidated(std::exchange(m_synchronizedUpdateDamage, QRect{}));
+    }
+
+    int movecursor(VTermPos pos, VTermPos oldpos, int visible)
+    {
+        Q_UNUSED(oldpos)
+        Cursor oldCursor = q->cursor();
+        m_cursor.position = {pos.col, pos.row};
+        m_cursor.visible = visible > 0;
+        emit q->cursorChanged(oldCursor, q->cursor());
+        return 1;
+    }
+
+    const VTermScreenCell *cellAt(int x, int y)
+    {
+        const QSize live = liveSize();
+        const int scrollbackRows = m_altscreen ? 0 : m_scrollback->size();
+
+        if (y < 0 || x < 0 || y >= live.height() + scrollbackRows || x >= live.width()) {
+            qCWarning(log) << "Invalid Parameter for cellAt:" << x << y << "liveSize:" << live
+                           << "fullSize:" << q->fullSize();
+            return nullptr;
+        }
+
+        if (y < scrollbackRows) {
+            blankCell();
+            const VTermScreenCell *cells = m_scrollback->row(y);
+            return cells ? cells + x : nullptr;
+        }
+
+        y -= scrollbackRows;
+
+        static VTermScreenCell refCell{};
+        VTermPos vtp{y, x};
+        if (!vterm_screen_get_cell(m_vtermScreen, vtp, &refCell))
+            return nullptr;
+
+        return &refCell;
+    }
+
+    std::unique_ptr<VTerm, void (*)(VTerm *)> m_vterm;
+    char buffer[256];
+    VTermScreen *m_vtermScreen;
+    VTermScreenCallbacks m_vtermScreenCallbacks;
+    VTermStateFallbacks m_vtermStateFallbacks;
+
+    VTermSelectionCallbacks m_vtermSelectionCallbacks;
+
+    Cursor m_cursor;
+    QString m_currentCommand;
+
+    bool m_altscreen{false};
+    bool m_synchronizedUpdate{false};
+    QTimer m_synchronizedUpdateTimeout;
+    QRect m_synchronizedUpdateDamage;
+
+    std::unique_ptr<Scrollback> m_scrollback;
+
+    SurfaceIntegration *m_surfaceIntegration{nullptr};
+
+    TerminalSurface *q;
+    QTimer m_delayWriteTimer;
+    QByteArray m_writeBuffer;
+    QByteArray m_selectionBuffer;
+    bool m_selectionTooLong{false};
+
+    TerminalSurface::WriteToPty m_writeToPty;
+    TerminalSurface::ColorProvider m_colorProvider;
+    QByteArray m_colorQueryBuffer;
+    bool m_colorQueryTooLong{false};
+
+    bool m_refillFromScrollback{true};
+    bool m_reflowing{false};
+    VTermScreenCell m_blank{};
+    bool m_blankValid{false};
+
+    QByteArray m_uriBuffer;
+    bool m_uriTooLong{false};
+    QHash<QByteArray, int> m_uriIds;
+    QStringList m_uris;
+
+    struct Image
+    {
+        QImage image;
+        // The cell size the image was laid out for, so that it keeps its place
+        // in the text when the font changes size afterwards.
+        QSizeF cellSize;
+    };
+
+    SixelDecoder m_sixel;
+    VTermPos m_sixelOrigin{};
+    QHash<int, Image> m_images;
+    QList<int> m_imageOrder;
+    qint64 m_imageBytes{0};
+    int m_lastImageId{0};
+    QSizeF m_cellSize{defaultCellSize};
+};
+
+TerminalSurface::TerminalSurface(QSize initialGridSize)
+    : d(std::make_unique<TerminalSurfacePrivate>(this, initialGridSize))
+{
+    d->init();
+}
+
+TerminalSurface::~TerminalSurface() = default;
+
+int TerminalSurface::cellWidthAt(int x, int y) const
+{
+    const VTermScreenCell *cell = d->cellAt(x, y);
+    if (!cell)
+        return 0;
+    return cell->width;
+}
+
+QSize TerminalSurface::liveSize() const
+{
+    return d->liveSize();
+}
+
+QSize TerminalSurface::fullSize() const
+{
+    if (d->m_altscreen)
+        return liveSize();
+    return QSize{d->liveSize().width(), d->liveSize().height() + d->m_scrollback->size()};
+}
+
+std::u32string::value_type TerminalSurface::fetchCharAt(int x, int y) const
+{
+    const VTermScreenCell *cell = d->cellAt(x, y);
+    if (!cell)
+        return 0;
+
+    if (cell->width == 0)
+        return 0;
+
+    if (cell->chars[0] == 0xffffffff)
+        return 0;
+
+    if (cell->chars[1] == 0 && cell->chars[0] < 0x80)
+        return cell->chars[0];
+
+    // Stop at the first zero as the fetch does. Reading all six slots composed
+    // the leading code point with whatever the previous cell left in the tail
+    // of cellAt's static, or with the tail of the blank the scrollback pads
+    // with, neither of which this cell ever wrote.
+    const auto *chars = reinterpret_cast<const char32_t *>(cell->chars);
+    const auto *charsEnd = std::find(chars, chars + VTERM_MAX_CHARS_PER_CELL, char32_t(0));
+    const QString s = QString::fromUcs4(chars, charsEnd - chars)
+                          .normalized(QString::NormalizationForm_C);
+    const QList<uint> ucs4 = s.toUcs4();
+    if (ucs4.isEmpty())
+        return 0;
+    return ucs4.front();
+}
+
+TerminalCell TerminalSurface::fetchCell(int x, int y) const
+{
+    static TerminalCell emptyCell{1,
+                                  {},
+                                  {},
+                                  false,
+                                  ColorIndex::Foreground,
+                                  ColorIndex::Background,
+                                  QTextCharFormat::NoUnderline,
+                                  false};
+
+    if (y < 0 || y >= fullSize().height() || x >= fullSize().width()) {
+        qCWarning(log) << "Invalid Parameter for fetchCell:" << x << y << "fullSize:" << fullSize();
+        return emptyCell;
+    }
+
+    const VTermScreenCell *refCell = d->cellAt(x, y);
+    if (!refCell)
+        return emptyCell;
+
+    return d->toCell(*refCell);
+}
+
+std::optional<Hyperlink> TerminalSurface::hyperlinkAt(QPoint gridPos) const
+{
+    const int id = d->uriIdAt(gridPos);
+    if (id < 1 || id > d->m_uris.size())
+        return std::nullopt;
+
+    const int pos = gridToPos(gridPos);
+
+    // An application that opens a hyperlink and never closes it marks everything written
+    // afterwards, so the run is only followed for as far as it could be shown.
+    const int maxExtent = liveSize().width() * liveSize().height();
+    const int lastPos = gridToPos({liveSize().width() - 1, fullSize().height() - 1});
+
+    int start = pos;
+    const int minStart = qMax(0, pos - maxExtent);
+    while (start > minStart && d->uriIdAt(posToGrid(start - 1)) == id)
+        --start;
+
+    int end = pos + 1;
+    const int maxEnd = qMin(lastPos, pos + maxExtent);
+    while (end <= maxEnd && d->uriIdAt(posToGrid(end)) == id)
+        ++end;
+
+    return Hyperlink{d->m_uris.at(id - 1), start, end};
+}
+
+void TerminalSurface::setRefillFromScrollback(bool refill)
+{
+    d->m_refillFromScrollback = refill;
+}
+
+void TerminalSurface::setCellSize(QSizeF cellSize)
+{
+    d->m_cellSize = cellSize.isEmpty() ? defaultCellSize : cellSize;
+}
+
+std::optional<ImageTile> TerminalSurface::imageTile(quint32 tag) const
+{
+    const auto it = d->m_images.constFind(ImageCell::id(tag));
+    if (it == d->m_images.constEnd())
+        return std::nullopt;
+
+    const QSizeF cell = it->cellSize;
+    const QPointF topLeft{ImageCell::column(tag) * cell.width(),
+                          ImageCell::row(tag) * cell.height()};
+
+    return ImageTile{it->image, QRectF{topLeft, cell}};
+}
+
+void TerminalSurface::clearAll()
+{
+    d->m_images.clear();
+    d->m_imageOrder.clear();
+    d->m_imageBytes = 0;
+
+    // Fake a scrollback clearing
+    QByteArray data{"\x1b[3J"};
+    vterm_input_write(d->m_vterm.get(), data.constData(), data.size());
+
+    // Send Ctrl+L which will clear the screen
+    d->m_writeToPty(QByteArray("\f"));
+}
+
+void TerminalSurface::resize(QSize newSize)
+{
+    if (newSize.width() < 1 || newSize.height() < 1)
+        return;
+
+    if (newSize == d->liveSize())
+        return;
+
+    if (d->m_altscreen) {
+        // Nothing needs laying out while the alternate screen is up, but the
+        // scrollback stores logical lines that wrap when they are read, so it
+        // still has to learn the new width.
+        d->m_scrollback->setWidth(newSize.width());
+        vterm_set_size(d->m_vterm.get(), newSize.height(), newSize.width());
+        return;
+    }
+
+    d->relayout(newSize);
+}
+
+QPoint TerminalSurface::posToGrid(int pos) const
+{
+    return {pos % d->liveSize().width(), pos / d->liveSize().width()};
+}
+int TerminalSurface::gridToPos(QPoint gridPos) const
+{
+    return gridPos.y() * d->liveSize().width() + gridPos.x();
+}
+
+void TerminalSurface::dataFromPty(const QByteArray &data)
+{
+    // flush() emits the damage, so that a burst of writes merges into one
+    // invalidation instead of one per chunk.
+    vterm_input_write(d->m_vterm.get(), data.constData(), data.size());
+}
+
+void TerminalSurface::flush()
+{
+    // Holding the damage back is what makes a synchronized update atomic: the
+    // cells keep changing underneath, but nothing is told to repaint until the
+    // application ends the update.
+    if (d->m_synchronizedUpdate)
+        return;
+
+    vterm_screen_flush_damage(d->m_vtermScreen);
+}
+
+bool TerminalSurface::isSynchronizedUpdateActive() const
+{
+    return d->m_synchronizedUpdate;
+}
+
+// The marker vterm_keyboard_end_paste writes is what tells the program the
+// bracketed region is over, so a paste carrying one of its own ends the region
+// early and everything after it arrives as ordinary typed input - which is the
+// whole of what bracketed paste is relied on to prevent, and is reachable
+// however the region was announced. It is a control the terminal emits and
+// never part of what a reader meant to paste, so drop it rather than ask about
+// it: a confirmation that was accepted would still send it. Removal can bring
+// the halves of a split marker together, so repeat until nothing is left.
+static QString withoutPasteEndMarker(const QString &text)
+{
+    static const QString csiForm = QStringLiteral("\x1b[201~");
+    // A C1 CSI reaches a program that reads single bytes as latin1. Spelt as a
+    // QChar because a \u escape naming a control character is ill-formed.
+    static const QString c1Form = QChar(0x9b) + QStringLiteral("201~");
+
+    QString result = text;
+    for (qsizetype before = -1; result.size() != before;) {
+        before = result.size();
+        result.remove(csiForm);
+        result.remove(c1Form);
+    }
+    return result;
+}
+
+void TerminalSurface::pasteFromClipboard(const QString &pastedText)
+{
+    const QString clipboardText = withoutPasteEndMarker(pastedText);
+    if (clipboardText.isEmpty())
+        return;
+
+    vterm_keyboard_start_paste(d->m_vterm.get());
+    for (unsigned int ch : clipboardText.toUcs4()) {
+        // Workaround for weird nano behavior to correctly paste newlines
+        // see: http://savannah.gnu.org/bugs/?49176
+        // and: https://github.com/kovidgoyal/kitty/issues/994
+        if (ch == '\n')
+            ch = '\r';
+        vterm_keyboard_unichar(d->m_vterm.get(), ch, VTERM_MOD_NONE);
+    }
+    vterm_keyboard_end_paste(d->m_vterm.get());
+
+    if (!d->m_altscreen) {
+        emit unscroll();
+    }
+}
+
+void TerminalSurface::sendKey(Qt::Key key)
+{
+    if (key == Qt::Key_Escape)
+        vterm_keyboard_key(d->m_vterm.get(), VTERM_KEY_ESCAPE, VTERM_MOD_NONE);
+}
+
+void TerminalSurface::sendKey(const QString &text)
+{
+    for (const unsigned int ch : text.toUcs4())
+        vterm_keyboard_unichar(d->m_vterm.get(), ch, VTERM_MOD_NONE);
+}
+
+void TerminalSurface::sendKey(QKeyEvent *event)
+{
+    bool keypad = event->modifiers() & Qt::KeypadModifier;
+    VTermModifier mod = qtModifierToVTerm(event->modifiers());
+    VTermKey key = qtKeyToVTerm(Qt::Key(event->key()), keypad);
+
+    if (key != VTERM_KEY_NONE) {
+        if (mod == VTERM_MOD_SHIFT && (key == VTERM_KEY_ESCAPE || key == VTERM_KEY_BACKSPACE))
+            mod = VTERM_MOD_NONE;
+
+        vterm_keyboard_key(d->m_vterm.get(), key, mod);
+    } else if (event->text().size() == 1) {
+        // event->text() already contains the correct unicode character based on the modifiers
+        // used, so we can simply convert it to Ucs4 and send it to the terminal.
+        vterm_keyboard_unichar(d->m_vterm.get(), event->text().toUcs4()[0], VTERM_MOD_NONE);
+    } else if (mod == VTERM_MOD_CTRL && event->key() >= Qt::Key_A && event->key() < Qt::Key_Z) {
+        vterm_keyboard_unichar(d->m_vterm.get(), 'a' + (event->key() - Qt::Key_A), mod);
+    }
+}
+
+Cursor TerminalSurface::cursor() const
+{
+    Cursor cursor = d->m_cursor;
+    if (!d->m_altscreen)
+        cursor.position.setY(cursor.position.y() + d->m_scrollback->size());
+
+    return cursor;
+}
+
+SurfaceIntegration *TerminalSurface::surfaceIntegration() const
+{
+    return d->m_surfaceIntegration;
+}
+
+void TerminalSurface::setSurfaceIntegration(SurfaceIntegration *surfaceIntegration)
+{
+    d->m_surfaceIntegration = surfaceIntegration;
+}
+
+void TerminalSurface::mouseMove(QPoint pos, Qt::KeyboardModifiers modifiers)
+{
+    vterm_mouse_move(d->m_vterm.get(), pos.y(), pos.x(), qtModifierToVTerm(modifiers));
+}
+
+void TerminalSurface::mouseButton(Qt::MouseButton button,
+                                  bool pressed,
+                                  Qt::KeyboardModifiers modifiers)
+{
+    int btnIdx = 0;
+    switch (button) {
+    case Qt::LeftButton:
+        btnIdx = 1;
+        break;
+    case Qt::RightButton:
+        btnIdx = 3;
+        break;
+    case Qt::MiddleButton:
+        btnIdx = 2;
+        break;
+    case Qt::ExtraButton1:
+        btnIdx = 4;
+        break;
+    case Qt::ExtraButton2:
+        btnIdx = 5;
+        break;
+    case Qt::ExtraButton3:
+        btnIdx = 6;
+        break;
+    case Qt::ExtraButton4:
+        btnIdx = 7;
+        break;
+    default:
+        return;
+    }
+
+    vterm_mouse_button(d->m_vterm.get(), btnIdx, pressed, qtModifierToVTerm(modifiers));
+}
+
+void TerminalSurface::sendFocus(bool hasFocus)
+{
+    VTermState *vts = vterm_obtain_state(d->m_vterm.get());
+
+    if (hasFocus)
+        vterm_state_focus_in(vts);
+    else
+        vterm_state_focus_out(vts);
+}
+
+bool TerminalSurface::isInAltScreen()
+{
+    return d->m_altscreen;
+}
+
+bool TerminalSurface::isBracketedPasteEnabled() const
+{
+    return vterm_state_get_bracketedpaste(vterm_obtain_state(d->m_vterm.get()));
+}
+
+void TerminalSurface::setWriteToPty(WriteToPty writeToPty)
+{
+    d->m_writeToPty = writeToPty;
+}
+
+void TerminalSurface::setColorProvider(ColorProvider colorProvider)
+{
+    d->m_colorProvider = colorProvider;
+}
+
+CellIterator TerminalSurface::begin() const
+{
+    auto res = CellIterator(this, {0, 0});
+    res.m_state = CellIterator::State::BEGIN;
+    return res;
+}
+
+CellIterator TerminalSurface::end() const
+{
+    return CellIterator(this);
+}
+
+std::reverse_iterator<CellIterator> TerminalSurface::rbegin() const
+{
+    return std::make_reverse_iterator(end());
+}
+
+std::reverse_iterator<CellIterator> TerminalSurface::rend() const
+{
+    return std::make_reverse_iterator(begin());
+}
+
+CellIterator TerminalSurface::iteratorAt(QPoint pos) const
+{
+    return CellIterator(this, pos);
+}
+CellIterator TerminalSurface::iteratorAt(int pos) const
+{
+    return CellIterator(this, pos);
+}
+
+std::reverse_iterator<CellIterator> TerminalSurface::rIteratorAt(QPoint pos) const
+{
+    return std::make_reverse_iterator(iteratorAt(pos));
+}
+
+std::reverse_iterator<CellIterator> TerminalSurface::rIteratorAt(int pos) const
+{
+    return std::make_reverse_iterator(iteratorAt(pos));
+}
+
+} // namespace TerminalSolution

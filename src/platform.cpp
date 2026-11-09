@@ -3,6 +3,7 @@
 #include <breezeicons.h>
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QGuiApplication>
@@ -17,13 +18,17 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+// after windows.h
+#include <tlhelp32.h>
 #else
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusVariant>
 
+#include <fcntl.h>
 #include <signal.h>
+#include <termios.h>
 #include <unistd.h>
 #endif
 
@@ -171,6 +176,49 @@ void openTerminal(const QString &dir, const QString &shell, const QString &title
     process.startDetached();
 }
 
+bool shellReady(qint64 pid)
+{
+    return pid > 0;
+}
+
+bool shellAtPrompt(qint64 pid)
+{
+    if (pid <= 0) {
+        return false;
+    }
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    struct Process {
+        DWORD id;
+        DWORD parent;
+        QString name;
+    };
+    QList<Process> processes;
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    for (BOOL ok = Process32FirstW(snapshot, &entry); ok; ok = Process32NextW(snapshot, &entry)) {
+        processes.append({entry.th32ProcessID, entry.th32ParentProcessID, QString::fromWCharArray(entry.szExeFile).toLower()});
+    }
+    CloseHandle(snapshot);
+    const auto children = [&processes](DWORD id) {
+        QList<Process> found;
+        for (const Process &process : std::as_const(processes)) {
+            if (process.parent == id && process.id != id) {
+                found.append(process);
+            }
+        }
+        return found;
+    };
+    QList<Process> running = children(DWORD(pid));
+    // Git Bash's bin\bash.exe only starts the real shell, usr\bin\bash.exe.
+    if (running.size() == 1 && running.constFirst().name == QLatin1String("bash.exe")) {
+        running = children(running.constFirst().id);
+    }
+    return running.isEmpty();
+}
+
 Appearance desktopAppearance()
 {
     Appearance appearance;
@@ -282,6 +330,40 @@ void openTerminal(const QString &dir, const QString &shell, const QString &, con
             return;
         }
     }
+}
+
+bool shellReady(qint64 pid)
+{
+    if (pid <= 0) {
+        return false;
+    }
+    // Shells turn the terminal's own echo off while they read their command
+    // line: typed before, a command would be shown twice.
+    const int fd = ::open(QStringLiteral("/proc/%1/fd/0").arg(pid).toLocal8Bit().constData(), O_RDONLY | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+    termios mode{};
+    const bool ok = tcgetattr(fd, &mode) == 0;
+    ::close(fd);
+    return ok && !(mode.c_lflag & ECHO);
+}
+
+bool shellAtPrompt(qint64 pid)
+{
+    if (pid <= 0) {
+        return false;
+    }
+    // /proc/<pid>/stat: "pid (name) state ppid pgrp session tty_nr tpgid ...",
+    // tpgid being the foreground process group of the shell's terminal.
+    QFile file(QStringLiteral("/proc/%1/stat").arg(pid));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    const QByteArray stat = file.readAll();
+    const qsizetype name = stat.lastIndexOf(')'); // the name may hold spaces and brackets
+    const QList<QByteArray> fields = name < 0 ? QList<QByteArray>() : stat.mid(name + 2).split(' ');
+    return fields.size() > 5 && fields.at(5).toLongLong() == pid;
 }
 
 namespace

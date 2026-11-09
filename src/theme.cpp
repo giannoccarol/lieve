@@ -412,12 +412,7 @@ void prepareKonsole(const Colors &c)
         return;
     }
 
-    // ANSI colours of VS Code's integrated terminal (Dark+/Light+)
-    static const char *darkAnsi[16] = {"#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd", "#e5e5e5",
-                                       "#666666", "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6", "#29b8db", "#ffffff"};
-    static const char *lightAnsi[16] = {"#000000", "#cd3131", "#00bc00", "#949800", "#0451a5", "#bc05bc", "#0598bc", "#555555",
-                                        "#666666", "#cd3131", "#14ce14", "#b5ba00", "#0451a5", "#bc05bc", "#0598bc", "#a5a5a5"};
-    const char **ansi = c.dark ? darkAnsi : lightAnsi;
+    const QList<QColor> ansi = ansiColors(c.dark);
     const auto rgb = [](const QColor &col) {
         return QStringLiteral("%1,%2,%3").arg(col.red()).arg(col.green()).arg(col.blue());
     };
@@ -427,8 +422,8 @@ void prepareKonsole(const Colors &c)
         scheme += QStringLiteral("[Background%1]\nColor=%2\n\n").arg(QLatin1String(suffix), rgb(background));
     }
     for (int i = 0; i < 8; ++i) {
-        const QColor normal(QLatin1String(ansi[i]));
-        const QColor intense(QLatin1String(ansi[i + 8]));
+        const QColor normal = ansi.at(i);
+        const QColor intense = ansi.at(i + 8);
         scheme += QStringLiteral("[Color%1]\nColor=%2\n\n").arg(i).arg(rgb(normal));
         scheme += QStringLiteral("[Color%1Intense]\nColor=%2\n\n").arg(i).arg(rgb(intense));
         scheme += QStringLiteral("[Color%1Faint]\nColor=%2\n\n").arg(i).arg(rgb(mix(normal, background, 0.4)));
@@ -569,6 +564,20 @@ const Colors &colors()
 QString editorThemeName()
 {
     return g_editorTheme;
+}
+
+QList<QColor> ansiColors(bool dark)
+{
+    // ANSI colours of VS Code's integrated terminal (Dark+/Light+)
+    static const char *darkAnsi[16] = {"#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd", "#e5e5e5",
+                                       "#666666", "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6", "#29b8db", "#ffffff"};
+    static const char *lightAnsi[16] = {"#000000", "#cd3131", "#00bc00", "#949800", "#0451a5", "#bc05bc", "#0598bc", "#555555",
+                                        "#666666", "#cd3131", "#14ce14", "#b5ba00", "#0451a5", "#bc05bc", "#0598bc", "#a5a5a5"};
+    QList<QColor> colors;
+    for (const char *name : dark ? darkAnsi : lightAnsi) {
+        colors << QColor(QLatin1String(name));
+    }
+    return colors;
 }
 
 QString konsoleProfile(const QString &shell)

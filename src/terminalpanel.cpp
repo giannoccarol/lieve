@@ -1,8 +1,10 @@
 #include "terminalpanel.h"
 
+#include "builtinterminal.h"
 #include "platform.h"
 #include "settings.h"
 #include "tabview.h"
+#include "terminalengine.h"
 #include "theme.h"
 
 #include <KActionCollection>
@@ -13,16 +15,16 @@
 #include <kde_terminal_interface.h>
 
 #include <QAction>
+#include <QActionGroup>
+#include <QApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QKeyEvent>
-#include <QActionGroup>
-#include <QFile>
-#include <QLabel>
 #include <QMenu>
-#include <QProcess>
 #include <QStandardPaths>
 #include <QTabBar>
 #include <QTimer>
@@ -30,14 +32,18 @@
 #include <QVBoxLayout>
 
 #ifndef Q_OS_WIN
-#include <fcntl.h>
 #include <pwd.h>
-#include <termios.h>
 #include <unistd.h>
 #endif
 
 namespace
 {
+#ifdef Q_OS_WIN
+constexpr bool kWindows = true;
+#else
+constexpr bool kWindows = false;
+#endif
+
 struct Shell {
     QString name; // "fish"
     QString path; // "/usr/bin/fish"
@@ -119,11 +125,7 @@ QList<Shell> availableShells()
             continue;
         }
         const QString real = QFileInfo(path).canonicalFilePath();
-#ifdef Q_OS_WIN
-        const QString name = QFileInfo(real).completeBaseName(); // "pwsh", not "pwsh.exe"
-#else
-        const QString name = QFileInfo(real).fileName();
-#endif
+        const QString name = Lieve::Terminal::shellName(real, kWindows); // "pwsh", not "pwsh.exe"
         if (seen.contains(real) || skip.contains(name) || skip.contains(QFileInfo(path).fileName())) {
             continue;
         }
@@ -153,14 +155,31 @@ QString resolveShell(const QString &setting)
     return isExecutable(path) ? path : loginShell();
 }
 
+bool konsoleAvailable()
+{
+    static const bool available = KPluginMetaData(QStringLiteral("kf6/parts/konsolepart")).isValid();
+    return available;
+}
+
+// [terminal] engine= (read at each new terminal), with Konsole's part if it is there.
+Lieve::Terminal::Engine engine()
+{
+    if (qEnvironmentVariableIsSet("LIEVE_TEST_BUILTIN_TERMINAL")) { // the checks: the built-in one even where Konsole is
+        return Lieve::Terminal::Engine::Builtin;
+    }
+    const QString setting = Lieve::config().value(QStringLiteral("terminal/engine"), QStringLiteral("auto")).toString();
+    return Lieve::Terminal::chooseEngine(setting, konsoleAvailable());
+}
+
+QIcon terminalIcon()
+{
+    return QIcon::fromTheme(QStringLiteral("utilities-terminal"));
+}
 }
 
 bool TerminalPanel::embedded()
 {
-    // Without the Konsole part (Windows; Linux without Konsole installed),
-    // terminals open outside Lieve.
-    static const bool available = KPluginMetaData(QStringLiteral("kf6/parts/konsolepart")).isValid();
-    return available;
+    return konsoleAvailable() || BuiltinTerminal::available();
 }
 
 TerminalPanel::TerminalPanel(QWidget *parent)
@@ -227,11 +246,12 @@ void TerminalPanel::closeAll()
             delete part.data(); // ends the shell, removes its tab
         }
     }
-    while (m_tabs->count() > 0) { // error tabs and pages, if any
+    while (m_tabs->count() > 0) { // built-in terminals and pages
         QWidget *w = m_tabs->widget(0);
         m_tabs->removeTab(0);
         if (!m_pages.contains(w)) {
-            delete w;
+            w->disconnect(this);
+            delete w; // a built-in terminal ends its shell
         }
     }
 }
@@ -299,7 +319,7 @@ void TerminalPanel::fillShellMenu(QMenu *menu)
     const QList<Shell> shells = availableShells();
     const QString setting = shellSetting();
     const QString current = QFileInfo(resolveShell(setting)).canonicalFilePath();
-    const QIcon icon = QIcon::fromTheme(QStringLiteral("utilities-terminal"));
+    const QIcon icon = terminalIcon();
 
     for (const Shell &shell : shells) {
         const QString text = shell.path == current ? tr("%1  (default)").arg(shell.name) : shell.name;
@@ -331,47 +351,57 @@ void TerminalPanel::fillShellMenu(QMenu *menu)
     }
 }
 
-void TerminalPanel::newTerminal(const QString &dir, const QString &shellPath)
+QWidget *TerminalPanel::newTerminal(const QString &dir, const QString &shellPath)
 {
     const QString shell = shellPath.isEmpty() ? resolveShell(shellSetting()) : shellPath;
     const QString workDir = !dir.isEmpty() ? dir : (!m_dir.isEmpty() ? m_dir : QDir::homePath());
-    if (!embedded()) {
+    QWidget *terminal = openInPanel(workDir, shell);
+    if (!terminal) {
+        // The last resort: Windows Terminal, or the desktop's terminal.
         Lieve::Platform::openTerminal(workDir, shell, QString(), QString());
-        return;
     }
+    return terminal;
+}
+
+QWidget *TerminalPanel::openInPanel(const QString &dir, const QString &shell)
+{
+    const bool builtin = BuiltinTerminal::available();
+    QWidget *terminal = nullptr;
+    if (konsoleAvailable() && (engine() == Lieve::Terminal::Engine::Konsole || !builtin)) {
+        terminal = openKonsole(dir, shell);
+    }
+    if (!terminal && builtin) {
+        terminal = openBuiltin(dir, shell);
+    }
+    if (terminal) {
+        terminal->setFocus();
+    }
+    return terminal;
+}
+
+QWidget *TerminalPanel::openKonsole(const QString &dir, const QString &shell)
+{
     const auto result = KPluginFactory::instantiatePlugin<KParts::ReadOnlyPart>(KPluginMetaData(QStringLiteral("kf6/parts/konsolepart")), this);
     if (!result.plugin) {
-        auto *error = new QLabel(tr("Could not load the Konsole terminal.\n%1\n\nInstall Konsole: pacman -S konsole")
-                                     .arg(result.errorString),
-                                 m_tabs);
-        error->setAlignment(Qt::AlignCenter);
-        m_tabs->setCurrentIndex(m_tabs->addTab(error, QIcon(), tr("Error")));
-        return;
+        qWarning("lieve: the Konsole terminal could not be loaded (%s): the built-in one is used", qPrintable(result.errorString));
+        return nullptr;
     }
 
     KParts::ReadOnlyPart *part = result.plugin;
     QWidget *widget = part->widget();
-    const int index = m_tabs->addTab(widget, QIcon::fromTheme(QStringLiteral("utilities-terminal")), QFileInfo(shell).fileName());
+    const int index = m_tabs->addTab(widget, terminalIcon(), Lieve::Terminal::shellName(shell, kWindows));
     m_tabs->setCurrentIndex(index);
     m_parts.insert(widget, part);
 
     // Let the window keep its own shortcuts while the terminal has focus.
     connect(part, SIGNAL(overrideShortcut(QKeyEvent *, bool &)), this, SLOT(overrideShortcut(QKeyEvent *, bool &)));
     connect(part, &KParts::Part::setWindowCaption, this, [this, widget](const QString &caption) {
-        const int i = m_tabs->indexOf(widget);
-        if (i >= 0 && !caption.isEmpty()) {
-            m_tabs->setTabText(i, caption.size() > 40 ? caption.left(39) + QStringLiteral("…") : caption);
-            m_tabs->setTabToolTip(i, caption);
-        }
+        setTitle(widget, caption);
     });
     // Konsole deletes the part when the shell exits ("exit" or Ctrl+D).
     connect(part, &QObject::destroyed, this, [this, widget] {
         m_parts.remove(widget);
-        QTimer::singleShot(0, this, [this] {
-            if (m_tabs->count() == 0) {
-                Q_EMIT lastTerminalClosed();
-            }
-        });
+        terminalGone();
     });
 
     if (auto *terminal = qobject_cast<TerminalInterface *>(part)) {
@@ -380,7 +410,7 @@ void TerminalPanel::newTerminal(const QString &dir, const QString &shellPath)
         if (profile.isEmpty() || !terminal->setCurrentProfile(profile)) {
             qWarning("lieve: Konsole profile for %s not applied", qPrintable(shell));
         }
-        terminal->showShellInDir(workDir);
+        terminal->showShellInDir(dir);
     }
     stripReservedShortcuts(part);
     QTimer::singleShot(0, this, [this, guard = QPointer<KParts::ReadOnlyPart>(part)] {
@@ -388,78 +418,134 @@ void TerminalPanel::newTerminal(const QString &dir, const QString &shellPath)
             stripReservedShortcuts(guard);
         }
     });
-    widget->setFocus();
+    return widget;
 }
 
-namespace
+QWidget *TerminalPanel::openBuiltin(const QString &dir, const QString &shell)
 {
-// True once the shell reads its command line: shells turn the terminal's own
-// echo off then. Typed before, a command would be shown twice.
-bool shellReady(int pid)
-{
-    if (pid <= 0) {
-        return false;
+    auto *terminal = new BuiltinTerminal(m_tabs);
+    terminal->setReservedKeys([this](const QKeyEvent *event) {
+        return isReserved(event);
+    });
+    const int index = m_tabs->addTab(terminal, terminalIcon(), Lieve::Terminal::shellName(shell, kWindows));
+    m_tabs->setCurrentIndex(index);
+    if (!terminal->start(shell, dir)) {
+        qWarning("lieve: the built-in terminal could not start %s: %s", qPrintable(shell), qPrintable(terminal->errorString()));
+        m_tabs->removeTab(m_tabs->indexOf(terminal));
+        delete terminal;
+        return nullptr;
     }
-#ifdef Q_OS_WIN
-    return true;
-#else
-    const int fd = ::open(QStringLiteral("/proc/%1/fd/0").arg(pid).toLocal8Bit().constData(), O_RDONLY | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0) {
-        return false;
-    }
-    termios mode{};
-    const bool ok = tcgetattr(fd, &mode) == 0;
-    ::close(fd);
-    return ok && !(mode.c_lflag & ECHO);
-#endif
+    connect(terminal, &BuiltinTerminal::titleChanged, this, [this, terminal](const QString &title) {
+        setTitle(terminal, title);
+    });
+    // The shell has exited ("exit" or Ctrl+D): its tab goes, as Konsole's does.
+    connect(terminal, &BuiltinTerminal::finished, this, [this, terminal] {
+        const int i = m_tabs->indexOf(terminal);
+        if (i >= 0) {
+            m_tabs->removeTab(i);
+        }
+        terminal->disconnect(this);
+        terminal->deleteLater();
+        terminalGone();
+    });
+    return terminal;
 }
 
-// Types `text` once the shell is ready (checked every 30 ms, for 5 s at most).
-void typeWhenReady(KParts::ReadOnlyPart *part, const QString &text)
+void TerminalPanel::terminalGone()
 {
-    auto *terminal = qobject_cast<TerminalInterface *>(part);
-    if (shellReady(terminal->terminalProcessId())) {
-        terminal->sendInput(text);
+    QTimer::singleShot(0, this, [this] {
+        if (m_tabs->count() == 0) {
+            Q_EMIT lastTerminalClosed();
+        }
+    });
+}
+
+void TerminalPanel::setTitle(QWidget *terminal, const QString &title)
+{
+    const int i = m_tabs->indexOf(terminal);
+    if (i >= 0 && !title.trimmed().isEmpty()) {
+        m_tabs->setTabText(i, Lieve::Terminal::tabTitle(title));
+        m_tabs->setTabToolTip(i, title);
+    }
+}
+
+bool TerminalPanel::isTerminal(QWidget *widget) const
+{
+    return widget && m_tabs->indexOf(widget) >= 0 && (m_parts.contains(widget) || qobject_cast<BuiltinTerminal *>(widget));
+}
+
+bool TerminalPanel::shellReady(QWidget *terminal) const
+{
+    if (auto *builtin = qobject_cast<BuiltinTerminal *>(terminal)) {
+        return builtin->shellReady();
+    }
+    auto *konsole = qobject_cast<TerminalInterface *>(m_parts.value(terminal).data());
+    return konsole && Lieve::Platform::shellReady(konsole->terminalProcessId());
+}
+
+bool TerminalPanel::atPrompt(QWidget *terminal) const
+{
+    if (auto *builtin = qobject_cast<BuiltinTerminal *>(terminal)) {
+        return builtin->atPrompt();
+    }
+    auto *konsole = qobject_cast<TerminalInterface *>(m_parts.value(terminal).data());
+    return konsole && konsole->foregroundProcessId() == -1;
+}
+
+void TerminalPanel::sendInput(QWidget *terminal, const QString &text)
+{
+    if (auto *builtin = qobject_cast<BuiltinTerminal *>(terminal)) {
+        builtin->sendText(text);
+    } else if (auto *konsole = qobject_cast<TerminalInterface *>(m_parts.value(terminal).data())) {
+        konsole->sendInput(text);
+    }
+}
+
+// Types `text` once the shell is ready (checked every 30 ms, for 5 s at most):
+// typed before, a command would be shown twice.
+void TerminalPanel::typeWhenReady(QWidget *terminal, const QString &text)
+{
+    if (shellReady(terminal)) {
+        sendInput(terminal, text);
         return;
     }
-    auto *timer = new QTimer(part);
+    auto *timer = new QTimer(terminal);
     QElapsedTimer waited;
     waited.start();
-    QObject::connect(timer, &QTimer::timeout, part, [timer, terminal, text, waited] {
-        if (shellReady(terminal->terminalProcessId()) || waited.hasExpired(5000)) {
+    connect(timer, &QTimer::timeout, terminal, [this, timer, terminal, text, waited] {
+        if (shellReady(terminal) || waited.hasExpired(5000)) {
             timer->deleteLater();
-            terminal->sendInput(text);
+            sendInput(terminal, text);
         }
     });
     timer->start(30);
 }
-}
 
 QWidget *TerminalPanel::runCommand(const QString &dir, const QString &title, const QString &command, QWidget *reuse)
 {
-    if (!embedded()) {
-        Lieve::Platform::openTerminal(dir, resolveShell(shellSetting()), title, command);
-        return nullptr;
-    }
-    KParts::ReadOnlyPart *part = reuse ? m_parts.value(reuse).data() : nullptr;
-    auto *terminal = qobject_cast<TerminalInterface *>(part);
-    if (!terminal || terminal->foregroundProcessId() != -1) { // closed, or still running something
-        newTerminal(dir);
-        part = m_parts.value(m_tabs->currentWidget()).data();
-        terminal = qobject_cast<TerminalInterface *>(part);
+    QWidget *terminal = isTerminal(reuse) && atPrompt(reuse) ? reuse : nullptr; // else closed, or still running something
+    if (!terminal) {
+        const QString shell = resolveShell(shellSetting());
+        const QString workDir = !dir.isEmpty() ? dir : (!m_dir.isEmpty() ? m_dir : QDir::homePath());
+        terminal = openInPanel(workDir, shell);
         if (!terminal) {
-            return nullptr; // the error tab says why
+            Lieve::Platform::openTerminal(workDir, shell, title, command);
+            return nullptr;
         }
         // The tab keeps the command's name instead of the shell's title.
-        disconnect(part, &KParts::Part::setWindowCaption, this, nullptr);
-        const int index = m_tabs->indexOf(part->widget());
+        if (KParts::ReadOnlyPart *part = m_parts.value(terminal)) {
+            disconnect(part, &KParts::Part::setWindowCaption, this, nullptr);
+        } else if (auto *builtin = qobject_cast<BuiltinTerminal *>(terminal)) {
+            disconnect(builtin, &BuiltinTerminal::titleChanged, this, nullptr);
+        }
+        const int index = m_tabs->indexOf(terminal);
         m_tabs->setTabText(index, title);
         m_tabs->setTabToolTip(index, command);
     }
-    m_tabs->setCurrentWidget(part->widget());
+    m_tabs->setCurrentWidget(terminal);
     // As if typed: it stays in the shell's history.
-    typeWhenReady(part, command + QLatin1Char('\n'));
-    return part->widget();
+    typeWhenReady(terminal, command + QLatin1Char('\n'));
+    return terminal;
 }
 
 void TerminalPanel::focusCurrent()
@@ -480,7 +566,8 @@ void TerminalPanel::closeTerminal(int index)
     } else {
         m_tabs->removeTab(index);
         if (!m_pages.contains(widget)) {
-            widget->deleteLater();
+            widget->disconnect(this);
+            widget->deleteLater(); // a built-in terminal ends its shell
         }
         if (m_tabs->count() == 0) {
             Q_EMIT lastTerminalClosed();
@@ -488,14 +575,21 @@ void TerminalPanel::closeTerminal(int index)
     }
 }
 
-void TerminalPanel::overrideShortcut(QKeyEvent *event, bool &override)
+bool TerminalPanel::isReserved(const QKeyEvent *event) const
 {
     const QKeySequence pressed(QKeyCombination(event->modifiers() & ~Qt::KeypadModifier, Qt::Key(event->key())));
     for (const QKeySequence &key : std::as_const(m_reserved)) {
         if (key.matches(pressed) == QKeySequence::ExactMatch) {
-            override = false; // let the window handle it
-            return;
+            return true;
         }
+    }
+    return false;
+}
+
+void TerminalPanel::overrideShortcut(QKeyEvent *event, bool &override)
+{
+    if (isReserved(event)) {
+        override = false; // let the window handle it
     }
 }
 
@@ -536,4 +630,191 @@ QStringList TerminalPanel::shellNames()
 QString TerminalPanel::loginShellName()
 {
     return QFileInfo(loginShell()).fileName();
+}
+
+// ---------------------------------------------------------------------------
+// LIEVE_TEST_BUILTIN_TERMINAL=step|step...: the terminals are built-in ones,
+// even where Konsole is installed; one step every 300 ms, from 1 s after the
+// panel opens. Steps:
+//   shell:<name or path>    a new terminal with that shell
+//   type:<text>             typed (and Enter) once the shell is ready, as runCommand types
+//   keys:<text>             key presses for each character, then Enter
+//   key:<sequence>          one key (Ctrl+Shift+V, Return, Ctrl+J...): to the shell,
+//                           or to the window's action if the window keeps it
+//   override:<sequence>     whether the shell gets that key or the window keeps it
+//   clipboard:<text>        puts text on the clipboard
+//   copy                    selects all and copies, prints the clipboard
+//   run:<title>:<command>   runCommand(), reusing the terminal the last run returned
+//   dump                    prints the lines on screen of the current terminal
+//   tabs                    prints the tabs (* = current) and their engine
+//   close                   closes the current tab, as its × does
+//   shot                    saves the panel next to LIEVE_SCREENSHOT (-terminal<n>.png)
+//   wait:<ms>
+// "1" (or nothing) runs the default sequence below.
+struct TerminalTest {
+    QStringList steps;
+    qsizetype next = 0;
+    QPointer<QWidget> lastRun;
+    int shots = 0;
+};
+
+void TerminalPanel::runTest(const QString &steps)
+{
+    auto test = std::make_shared<TerminalTest>();
+    test->steps = steps.split(QLatin1Char('|'), Qt::SkipEmptyParts);
+    if (test->steps.isEmpty() || test->steps == QStringList{QStringLiteral("1")}) {
+        test->steps = QStringLiteral("shell:bash|type:echo lieve-$((6*7))|wait:1500|dump"
+                                     "|keys:echo typed-$((2+3))|wait:1000|dump"
+                                     "|override:Ctrl+J|override:Ctrl+P|override:Ctrl+C|override:Ctrl+Shift+V"
+                                     "|clipboard:echo pasted-text|key:Ctrl+Shift+V|key:Return|wait:1000|dump|shot"
+                                     "|type:exit|wait:1500|tabs"
+                                     "|run:build:echo npm-run-build|wait:2000|tabs|dump"
+                                     "|run:build:echo npm-run-again|wait:2000|tabs|dump|shot"
+                                     "|close|tabs")
+                          .split(QLatin1Char('|'));
+    }
+    QTimer::singleShot(1000, this, [this, test] {
+        testStep(test);
+    });
+}
+
+void TerminalPanel::testStep(const std::shared_ptr<TerminalTest> &test)
+{
+    if (test->next >= test->steps.size()) {
+        qInfo().noquote() << "builtin-terminal done";
+        return;
+    }
+    const QString step = test->steps.at(test->next++);
+    const QString command = step.section(QLatin1Char(':'), 0, 0);
+    const QString argument = step.section(QLatin1Char(':'), 1);
+    QWidget *current = m_tabs->currentWidget();
+    auto *builtin = qobject_cast<BuiltinTerminal *>(current);
+    const auto name = [this](QWidget *w) {
+        const int i = m_tabs->indexOf(w);
+        return i < 0 ? QStringLiteral("(none)") : m_tabs->tabBar()->tabText(i);
+    };
+    // A key event the way the window system delivers it: first asked whether
+    // it is a shortcut, then pressed (or the window's action runs).
+    const auto press = [this, current](const QKeyCombination &combination, const QString &text) {
+        QWidget *target = current && current->focusWidget() ? current->focusWidget() : current;
+        if (!target) {
+            return QStringLiteral("no terminal");
+        }
+        QKeyEvent override(QEvent::ShortcutOverride, combination.key(), combination.keyboardModifiers(), text);
+        override.ignore();
+        QCoreApplication::sendEvent(target, &override);
+        if (!override.isAccepted()) {
+            const QKeySequence sequence(combination);
+            const auto actions = window()->actions();
+            for (QAction *action : actions) {
+                if (action->shortcuts().contains(sequence)) {
+                    action->trigger();
+                    return QStringLiteral("window (%1)").arg(action->text());
+                }
+            }
+            return QStringLiteral("window (no action)");
+        }
+        QKeyEvent down(QEvent::KeyPress, combination.key(), combination.keyboardModifiers(), text);
+        QKeyEvent up(QEvent::KeyRelease, combination.key(), combination.keyboardModifiers(), text);
+        QCoreApplication::sendEvent(target, &down);
+        QCoreApplication::sendEvent(target, &up);
+        return QStringLiteral("shell");
+    };
+    // What a key types: a printable character without Ctrl or Alt.
+    const auto typed = [](const QKeyCombination &combination) {
+        const int key = combination.key();
+        const Qt::KeyboardModifiers modifiers = combination.keyboardModifiers();
+        if (key == Qt::Key_Return || key == Qt::Key_Enter) {
+            return QStringLiteral("\r");
+        }
+        if (key < 0x20 || key > 0x7e || (modifiers & (Qt::ControlModifier | Qt::AltModifier))) {
+            return QString();
+        }
+        const QChar c(key);
+        return QString(modifiers & Qt::ShiftModifier ? c.toUpper() : c.toLower());
+    };
+    int delay = 300;
+
+    if (command == QLatin1String("shell")) {
+        const bool path = argument.contains(QLatin1Char('/')) || argument.contains(QLatin1Char('\\'));
+        const QString shell = path ? argument : QStandardPaths::findExecutable(argument);
+        QWidget *terminal = newTerminal(QString(), shell);
+        qInfo().noquote() << "builtin-terminal shell" << (shell.isEmpty() ? argument + QStringLiteral(" (not found: the default)") : shell) << "->"
+                          << (qobject_cast<BuiltinTerminal *>(terminal) ? "built-in" : terminal ? "konsole" : "outside Lieve");
+    } else if (command == QLatin1String("type") && current) {
+        typeWhenReady(current, argument + QLatin1Char('\n'));
+    } else if (command == QLatin1String("keys")) {
+        for (const QChar c : argument) {
+            const int key = c.isLetter() ? c.toUpper().unicode() : c.unicode();
+            press(QKeyCombination(c.isUpper() ? Qt::ShiftModifier : Qt::NoModifier, Qt::Key(key)), QString(c));
+        }
+        press(QKeyCombination(Qt::Key_Return), QStringLiteral("\r"));
+    } else if (command == QLatin1String("key")) {
+        const QKeySequence sequence = QKeySequence::fromString(argument, QKeySequence::PortableText);
+        if (sequence.isEmpty()) {
+            qInfo().noquote() << "builtin-terminal key" << argument << "-> not a key";
+        } else {
+            qInfo().noquote() << "builtin-terminal key" << argument << "->" << press(sequence[0], typed(sequence[0]));
+        }
+    } else if (command == QLatin1String("override")) {
+        const QKeySequence sequence = QKeySequence::fromString(argument, QKeySequence::PortableText);
+        QWidget *target = current && current->focusWidget() ? current->focusWidget() : current;
+        if (target && !sequence.isEmpty()) {
+            QKeyEvent event(QEvent::ShortcutOverride, sequence[0].key(), sequence[0].keyboardModifiers());
+            event.ignore();
+            QCoreApplication::sendEvent(target, &event);
+            qInfo().noquote() << "builtin-terminal override" << argument << "->" << (event.isAccepted() ? "shell" : "window");
+        }
+    } else if (command == QLatin1String("clipboard")) {
+        QApplication::clipboard()->setText(argument);
+    } else if (command == QLatin1String("copy") && builtin) {
+        builtin->selectAll();
+        builtin->copyToClipboard();
+        const QStringList lines = QApplication::clipboard()->text().split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            qInfo().noquote() << "builtin-terminal clipboard|" << line.trimmed();
+        }
+    } else if (command == QLatin1String("run")) {
+        const QString title = argument.section(QLatin1Char(':'), 0, 0);
+        const QString line = argument.section(QLatin1Char(':'), 1);
+        QWidget *reuse = test->lastRun.data();
+        test->lastRun = runCommand(m_dir, title, line, reuse);
+        qInfo().noquote() << "builtin-terminal run" << title << line << "->"
+                          << (!test->lastRun ? "outside Lieve" : test->lastRun == reuse ? "reused its terminal" : "new terminal");
+    } else if (command == QLatin1String("dump")) {
+        if (builtin) {
+            const QStringList lines = builtin->screenLines();
+            qInfo().noquote() << "builtin-terminal dump" << name(builtin) << "(" << builtin->shell() << ")," << lines.size() << "lines";
+            for (const QString &line : lines) {
+                qInfo().noquote() << "builtin-terminal |" << line;
+            }
+        } else {
+            qInfo().noquote() << "builtin-terminal dump: the current tab is no built-in terminal" << name(current);
+        }
+    } else if (command == QLatin1String("tabs")) {
+        QStringList tabs;
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            QWidget *w = m_tabs->widget(i);
+            const QString kind = qobject_cast<BuiltinTerminal *>(w) ? QStringLiteral("built-in") : m_parts.contains(w) ? QStringLiteral("konsole") : QStringLiteral("page");
+            tabs << (i == m_tabs->currentIndex() ? QStringLiteral("*") : QString()) + m_tabs->tabBar()->tabText(i) + QStringLiteral(" (") + kind + QLatin1Char(')');
+        }
+        qInfo().noquote() << "builtin-terminal tabs [" + tabs.join(QStringLiteral(", ")) + QLatin1Char(']') << "panel" << (isVisible() ? "shown" : "hidden");
+    } else if (command == QLatin1String("close")) {
+        qInfo().noquote() << "builtin-terminal close" << name(current);
+        closeTerminal(m_tabs->currentIndex());
+    } else if (command == QLatin1String("shot")) {
+        QString file = qEnvironmentVariable("LIEVE_SCREENSHOT");
+        if (!file.isEmpty()) {
+            file.replace(QStringLiteral(".png"), QStringLiteral("-terminal%1.png").arg(test->shots++));
+            grab().save(file);
+            qInfo().noquote() << "builtin-terminal shot" << file;
+        }
+    } else if (command == QLatin1String("wait")) {
+        delay = argument.toInt();
+    } else {
+        qInfo().noquote() << "builtin-terminal step" << step << "not understood here (" << name(current) << ")";
+    }
+    QTimer::singleShot(delay, this, [this, test] {
+        testStep(test);
+    });
 }
