@@ -2,6 +2,39 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="it_IT">
 <context>
+    <name>BuiltinTerminal</name>
+    <message>
+        <location filename="../src/builtinterminal.cpp" line="+119"/>
+        <source>The built-in terminal needs Windows 10 version 1903 or later.</source>
+        <translation>Il terminale interno richiede Windows 10 versione 1903 o successiva.</translation>
+    </message>
+    <message>
+        <location line="+33"/>
+        <source>Could not start %1.</source>
+        <translation>Impossibile avviare %1.</translation>
+    </message>
+    <message>
+        <location line="+147"/>
+        <source>Copy</source>
+        <translation>Copia</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Paste</source>
+        <translation>Incolla</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Select All</source>
+        <translation>Seleziona tutto</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Clear</source>
+        <translation>Pulisci</translation>
+    </message>
+</context>
+<context>
     <name>CommandLine</name>
     <message>
         <location filename="../src/windowmanager.cpp" line="+23"/>
@@ -121,7 +154,7 @@
 <context>
     <name>DiffView</name>
     <message>
-        <location filename="../src/diffview.cpp" line="+378"/>
+        <location filename="../src/diffview.cpp" line="+379"/>
         <source>%1 (Index)</source>
         <translation>%1 (indice)</translation>
     </message>
@@ -1046,7 +1079,7 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>Lieve::LspManager</name>
     <message>
-        <location filename="../src/lsp.cpp" line="+378"/>
+        <location filename="../src/lsp.cpp" line="+379"/>
         <location line="+42"/>
         <source>Go to Definition</source>
         <translation>Vai alla definizione</translation>
@@ -1289,7 +1322,7 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>Lsp</name>
     <message>
-        <location filename="../src/lspclient.cpp" line="+289"/>
+        <location filename="../src/lspclient.cpp" line="+294"/>
         <source>cannot run %1</source>
         <translation>impossibile avviare %1</translation>
     </message>
@@ -1317,7 +1350,7 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/mainwindow.cpp" line="+403"/>
+        <location filename="../src/mainwindow.cpp" line="+404"/>
         <source>Explorer (Ctrl+Shift+E)</source>
         <translation>Esplora risorse (Ctrl+Shift+E)</translation>
     </message>
@@ -1328,12 +1361,12 @@ Le sue modifiche andranno perse.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+1936"/>
+        <location line="+1960"/>
         <source>Source Control (Ctrl+Shift+G)</source>
         <translation>Controllo del codice sorgente (Ctrl+Shift+G)</translation>
     </message>
     <message>
-        <location line="-1934"/>
+        <location line="-1958"/>
         <source>Side Bar (Ctrl+B)</source>
         <translation>Barra laterale (Ctrl+B)</translation>
     </message>
@@ -1343,13 +1376,13 @@ Le sue modifiche andranno perse.</translation>
         <translation>Terminale (Ctrl+J)</translation>
     </message>
     <message>
-        <location line="+227"/>
-        <location line="+1289"/>
+        <location line="+229"/>
+        <location line="+1298"/>
         <source>Choose a project</source>
         <translation>Scegli un progetto</translation>
     </message>
     <message>
-        <location line="-1270"/>
+        <location line="-1279"/>
         <location line="+209"/>
         <source>Open Folder…</source>
         <translation>Apri cartella…</translation>
@@ -1564,7 +1597,7 @@ Le sue modifiche andranno perse.</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+978"/>
+        <location line="+987"/>
         <source>Open Preview to the Side</source>
         <translation>Apri l&apos;anteprima a lato</translation>
     </message>
@@ -1629,7 +1662,22 @@ Le sue modifiche andranno perse.</translation>
         <translation>Branch %1 — clic: passa a un altro branch</translation>
     </message>
     <message>
-        <location line="+479"/>
+        <location line="+173"/>
+        <source>Downloading and installing Lieve %1</source>
+        <translation>Scarico e installo Lieve %1</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Updating… %1%</source>
+        <translation>Aggiornamento in corso… %1%</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>The current version was left untouched. The details are below.</source>
+        <translation>La versione in uso non è stata toccata. I dettagli sono qui sotto.</translation>
+    </message>
+    <message>
+        <location line="+284"/>
         <source>Diffs of changes side by side (true) or inline (false); auto = like VS Code (diffEditor.renderSideBySide).</source>
         <translation>Differenze delle modifiche affiancate (true) o in linea (false); auto = come VS Code (diffEditor.renderSideBySide).</translation>
     </message>
@@ -1639,7 +1687,7 @@ Le sue modifiche andranno perse.</translation>
         <translation>Apri l&apos;anteprima a lato (Ctrl+K V)</translation>
     </message>
     <message>
-        <location line="-1216"/>
+        <location line="-1229"/>
         <source>Synchronize with %1 (pull and push)</source>
         <translation>Sincronizza con %1 (pull e push)</translation>
     </message>
@@ -1744,17 +1792,17 @@ Le sue modifiche andranno perse.</translation>
         <translation>È disponibile Lieve %1 (in uso: %2)</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+9"/>
         <source>Updating…</source>
         <translation>Aggiornamento in corso…</translation>
     </message>
     <message>
-        <location line="+0"/>
+        <location line="-3"/>
         <source>Downloading, building and installing Lieve %1</source>
         <translation>Scarico, compilo e installo Lieve %1</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+10"/>
         <source>↻ Restart to use %1</source>
         <translation>↻ Riavvia per usare la %1</translation>
     </message>
@@ -1784,12 +1832,12 @@ Le sue modifiche andranno perse.</translation>
         <translation>L&apos;aggiornamento a Lieve %1 non è riuscito.</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+4"/>
         <source>The current version was left untouched. The build details are below.</source>
         <translation>La versione in uso non è stata toccata. I dettagli della compilazione sono qui sotto.</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Lieve %1 is available (current: %2).</source>
         <translation>È disponibile Lieve %1 (in uso: %2).</translation>
     </message>
@@ -1904,7 +1952,7 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>MarkdownPreview</name>
     <message>
-        <location filename="../src/markdownpreview.cpp" line="+1209"/>
+        <location filename="../src/markdownpreview.cpp" line="+1210"/>
         <source>Preview %1</source>
         <translation>Anteprima %1</translation>
     </message>
@@ -1984,12 +2032,12 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>Prettier</name>
     <message>
-        <location filename="../src/prettier.cpp" line="+298"/>
+        <location filename="../src/prettier.cpp" line="+300"/>
         <source>cannot run %1</source>
         <translation>impossibile avviare %1</translation>
     </message>
     <message>
-        <location line="+255"/>
+        <location line="+256"/>
         <source>Node.js not found: set its path in Settings (Ctrl+,), section [format] node=</source>
         <translation>Node.js non trovato: indicalo in Impostazioni (Ctrl+,), sezione [format] node=</translation>
     </message>
@@ -2074,7 +2122,7 @@ Le sue modifiche andranno perse.</translation>
 <context>
     <name>Projects</name>
     <message>
-        <location filename="../src/projects.cpp" line="+300"/>
+        <location filename="../src/projects.cpp" line="+306"/>
         <location line="+34"/>
         <source>now</source>
         <translation>adesso</translation>
@@ -2525,7 +2573,56 @@ gutter=true
 </translation>
     </message>
     <message>
-        <location line="+43"/>
+        <location line="+15"/>
+        <source>
+[ui]
+; editor = the window colors follow the editor theme (like VS Code);
+; system = Plasma colors.
+theme=editor
+; Accent color: system (Plasma&apos;s), lieve (the burgundy of the icon) or #rrggbb.
+accent=system
+; Title bar: lieve (Lieve&apos;s own, with the search box) or system (Plasma&apos;s).
+titleBar=lieve
+; Interface language: auto (the system&apos;s), en, it.
+language=auto
+
+[terminal]
+; The terminal uses the same colors as the editor (a Konsole profile of Lieve&apos;s own,
+; your Konsole profiles are not touched).
+matchEditor=true
+; Shell for new terminals: auto (your login shell, e.g. fish) or fish, zsh,
+; bash or a path. It can also be chosen from the menu next to the terminal&apos;s +.
+shell=auto
+; The terminal in the panel: auto (or konsole) = Konsole&apos;s when Konsole is installed,
+; otherwise Lieve&apos;s built-in terminal; builtin = always the built-in terminal.
+engine=auto
+</source>
+        <translation>
+[ui]
+; editor = i colori della finestra seguono il tema dell&apos;editor (come VS Code);
+; system = colori di Plasma.
+theme=editor
+; Colore d&apos;accento: system (quello di Plasma), lieve (il bordeaux dell&apos;icona) oppure #rrggbb.
+accent=system
+; Barra del titolo: lieve (quella di Lieve, con la ricerca) oppure system (quella di Plasma).
+titleBar=lieve
+; Lingua dell&apos;interfaccia: auto (quella del sistema), en, it.
+language=auto
+
+[terminal]
+; Il terminale usa gli stessi colori dell&apos;editor (profilo Konsole privato di Lieve,
+; i tuoi profili di Konsole non vengono toccati).
+matchEditor=true
+; Shell dei nuovi terminali: auto (quella del tuo utente, es. fish) oppure fish, zsh,
+; bash o un percorso. Si sceglie anche dal menu accanto al + del terminale.
+shell=auto
+; Il terminale del pannello: auto (o konsole) = quello di Konsole se e installato,
+; altrimenti il terminale interno di Lieve; builtin = sempre quello interno.
+engine=auto
+</translation>
+    </message>
+    <message>
+        <location line="+31"/>
         <source>
 [files]
 ; Hot exit, like VS Code: closing a window or quitting does not ask about unsaved files,
@@ -2593,50 +2690,7 @@ codeLens=true
 </translation>
     </message>
     <message>
-        <location line="-37"/>
-        <source>
-[ui]
-; editor = the window colors follow the editor theme (like VS Code);
-; system = Plasma colors.
-theme=editor
-; Accent color: system (Plasma&apos;s), lieve (the burgundy of the icon) or #rrggbb.
-accent=system
-; Title bar: lieve (Lieve&apos;s own, with the search box) or system (Plasma&apos;s).
-titleBar=lieve
-; Interface language: auto (the system&apos;s), en, it.
-language=auto
-
-[terminal]
-; The terminal uses the same colors as the editor (a Konsole profile of Lieve&apos;s own,
-; your Konsole profiles are not touched).
-matchEditor=true
-; Shell for new terminals: auto (your login shell, e.g. fish) or fish, zsh,
-; bash or a path. It can also be chosen from the menu next to the terminal&apos;s +.
-shell=auto
-</source>
-        <translation>
-[ui]
-; editor = i colori della finestra seguono il tema dell&apos;editor (come VS Code);
-; system = colori di Plasma.
-theme=editor
-; Colore d&apos;accento: system (quello di Plasma), lieve (il bordeaux dell&apos;icona) oppure #rrggbb.
-accent=system
-; Barra del titolo: lieve (quella di Lieve, con la ricerca) oppure system (quella di Plasma).
-titleBar=lieve
-; Lingua dell&apos;interfaccia: auto (quella del sistema), en, it.
-language=auto
-
-[terminal]
-; Il terminale usa gli stessi colori dell&apos;editor (profilo Konsole privato di Lieve,
-; i tuoi profili di Konsole non vengono toccati).
-matchEditor=true
-; Shell dei nuovi terminali: auto (quella del tuo utente, es. fish) oppure fish, zsh,
-; bash o un percorso. Si sceglie anche dal menu accanto al + del terminale.
-shell=auto
-</translation>
-    </message>
-    <message>
-        <location line="-72"/>
+        <location line="-112"/>
         <source>; Lieve settings. Changes take effect the next time Lieve starts.
 
 [editor]
@@ -2703,7 +2757,7 @@ theme=auto
 </translation>
     </message>
     <message>
-        <location line="+93"/>
+        <location line="+96"/>
         <source>
 [updates]
 ; Checks every now and then whether a new version of Lieve is out on GitHub
@@ -2721,13 +2775,13 @@ check=true
 <context>
     <name>SettingsDialog</name>
     <message>
-        <location filename="../src/settingsdialog.cpp" line="+156"/>
-        <location line="+711"/>
+        <location filename="../src/settingsdialog.cpp" line="+157"/>
+        <location line="+719"/>
         <source>Settings</source>
         <translation>Impostazioni</translation>
     </message>
     <message>
-        <location line="-683"/>
+        <location line="-691"/>
         <source>Search settings</source>
         <translation>Cerca impostazioni</translation>
     </message>
@@ -2809,14 +2863,14 @@ check=true
     <message>
         <location line="+2"/>
         <location line="+34"/>
-        <location line="+122"/>
+        <location line="+130"/>
         <location line="+38"/>
         <location line="+253"/>
         <source>Automatic</source>
         <translation>Automatico</translation>
     </message>
     <message>
-        <location line="-436"/>
+        <location line="-444"/>
         <source>Color Theme</source>
         <translation>Tema colori</translation>
     </message>
@@ -2999,7 +3053,27 @@ check=true
         <translation>Terminale</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+5"/>
+        <source>Terminal Engine</source>
+        <translation>Motore del terminale</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Konsole&apos;s terminal, embedded in the panel, when Konsole is installed; otherwise Lieve&apos;s built-in terminal. For new terminals.</source>
+        <translation>Il terminale di Konsole, incorporato nel pannello, se Konsole è installato; altrimenti il terminale interno di Lieve. Vale per i nuovi terminali.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Automatic (Konsole when installed)</source>
+        <translation>Automatico (Konsole se installato)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Built-in</source>
+        <translation>Interno di Lieve</translation>
+    </message>
+    <message>
+        <location line="+3"/>
         <source>Automatic (%1, your login shell)</source>
         <translation>Automatica (%1, quella del tuo utente)</translation>
     </message>
@@ -3243,7 +3317,7 @@ check=true
     </message>
     <message>
         <location filename="../src/outline.cpp" line="-15"/>
-        <location filename="../src/settingsdialog.cpp" line="-567"/>
+        <location filename="../src/settingsdialog.cpp" line="-575"/>
         <source>Shows the path of the file and the symbols around the cursor above the editor.</source>
         <translation>Mostra sopra l&apos;editor il percorso del file e i simboli in cui si trova il cursore.</translation>
     </message>
@@ -3265,7 +3339,7 @@ check=true
 <context>
     <name>TerminalPanel</name>
     <message>
-        <location filename="../src/terminalpanel.cpp" line="+131"/>
+        <location filename="../src/terminalpanel.cpp" line="+201"/>
         <source>New Terminal (Ctrl+Shift+`)</source>
         <translation>Nuovo terminale (Ctrl+Shift+`)</translation>
     </message>
@@ -3280,7 +3354,7 @@ check=true
         <translation>Nascondi pannello (Ctrl+J)</translation>
     </message>
     <message>
-        <location line="+106"/>
+        <location line="+107"/>
         <source>%1  (default)</source>
         <translation>%1  (predefinita)</translation>
     </message>
@@ -3298,22 +3372,6 @@ check=true
         <location line="+4"/>
         <source>Automatic (%1, your login shell)</source>
         <translation>Automatica (%1, quella del tuo utente)</translation>
-    </message>
-    <message>
-        <location line="+13"/>
-        <source>Could not load the Konsole terminal.
-%1
-
-Install Konsole: pacman -S konsole</source>
-        <translation>Impossibile caricare il terminale di Konsole.
-%1
-
-Installa Konsole: pacman -S konsole</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Error</source>
-        <translation>Errore</translation>
     </message>
 </context>
 <context>
@@ -3351,9 +3409,38 @@ Installa Konsole: pacman -S konsole</translation>
     </message>
 </context>
 <context>
+    <name>Updater</name>
+    <message>
+        <location filename="../src/updater.cpp" line="+177"/>
+        <source>Could not save the download in %1.</source>
+        <translation>Impossibile salvare il download in %1.</translation>
+    </message>
+    <message>
+        <location line="+24"/>
+        <source>The download failed: %1</source>
+        <translation>Il download non è riuscito: %1</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>The download is incomplete.</source>
+        <translation>Il download è incompleto.</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>The download does not contain lieve.exe.</source>
+        <translation>Il download non contiene lieve.exe.</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <location line="+17"/>
+        <source>The download could not be extracted.</source>
+        <translation>Impossibile estrarre il download.</translation>
+    </message>
+</context>
+<context>
     <name>WindowManager</name>
     <message>
-        <location filename="../src/windowmanager.cpp" line="+75"/>
+        <location filename="../src/windowmanager.cpp" line="+81"/>
         <source>The folder no longer exists:
 %1</source>
         <translation>La cartella non esiste più:
