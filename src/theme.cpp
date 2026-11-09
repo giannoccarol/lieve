@@ -61,7 +61,7 @@ QColor readableOn(const QColor &background)
     return luminance > 0.6 ? QColor(0x1a, 0x1a, 0x1a) : QColor(Qt::white);
 }
 
-QColor accentColor(const QPalette &system, bool dark)
+QColor accentColor(const QPalette &system, bool dark, const QColor &desktopAccent)
 {
     const QString setting = config().value(QStringLiteral("ui/accent"), QStringLiteral("system")).toString().trimmed().toLower();
     if (setting == QLatin1String("lieve")) { // the burgundy of the icon
@@ -73,7 +73,10 @@ QColor accentColor(const QPalette &system, bool dark)
             return custom;
         }
     }
-    return system.color(QPalette::Active, QPalette::Highlight); // Plasma's accent colour
+    if (desktopAccent.isValid()) { // GNOME's and other desktops', from the portal
+        return desktopAccent;
+    }
+    return system.color(QPalette::Active, QPalette::Highlight); // Plasma's (and Windows') accent colour
 }
 
 // Small SVG icons for the stylesheet (tree chevrons, tab close), drawn in the
@@ -446,7 +449,9 @@ void prepareKonsole(const Colors &c)
 void apply(QApplication &app)
 {
     const QPalette system = app.palette();
-    const bool systemDark = system.color(QPalette::Window).lightness() < 128;
+    // The desktop's light/dark choice; else, as in Plasma, the palette's.
+    const Platform::Appearance desktop = Platform::desktopAppearance();
+    const bool systemDark = desktop.dark.value_or(system.color(QPalette::Window).lightness() < 128);
     QString name = config().value(QStringLiteral("editor/theme"), QStringLiteral("auto")).toString().trimmed();
     if (name.isEmpty() || name == QLatin1String("auto")) {
         name = systemDark ? QStringLiteral("VSCodium Dark") : QStringLiteral("Breeze Light");
@@ -471,7 +476,7 @@ void apply(QApplication &app)
     c.hover = mix(c.chrome, c.fg, c.dark ? 0.07 : 0.05);
     c.input = c.dark ? mix(c.editor, c.fg, 0.06) : QColor(Qt::white);
     c.inputBorder = mix(c.chrome, c.fg, c.dark ? 0.17 : 0.22);
-    c.accent = accentColor(system, c.dark);
+    c.accent = accentColor(system, c.dark, desktop.accent);
     c.accentText = readableOn(c.accent);
     c.selection = mix(c.chrome, c.accent, c.dark ? 0.38 : 0.22);
     c.selectionInactive = mix(c.chrome, c.fg, c.dark ? 0.11 : 0.09);

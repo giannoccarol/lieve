@@ -153,60 +153,14 @@ QString resolveShell(const QString &setting)
     return isExecutable(path) ? path : loginShell();
 }
 
-#ifdef Q_OS_WIN
-// The arguments that make `shell` run `command` and stay open afterwards
-// (the window shows the output; the command can be run again).
-QStringList runAndStay(const QString &shell, const QString &command)
-{
-    if (command.isEmpty()) {
-        return {};
-    }
-    const QString name = QFileInfo(shell).completeBaseName().toLower();
-    if (name == QLatin1String("pwsh") || name == QLatin1String("powershell")) {
-        return {QStringLiteral("-NoExit"), QStringLiteral("-Command"), command};
-    }
-    if (name == QLatin1String("cmd")) {
-        return {QStringLiteral("/K"), command};
-    }
-    if (name == QLatin1String("wsl")) {
-        return {QStringLiteral("--"), QStringLiteral("bash"), QStringLiteral("-ic"), command + QStringLiteral("; exec bash")};
-    }
-    return {QStringLiteral("-ic"), command + QStringLiteral("; exec bash")}; // Git Bash
-}
-
-// Without Konsole (Windows): a Windows Terminal window in `dir`, or else the
-// shell in a console window of its own.
-void openExternalTerminal(const QString &dir, const QString &shell, const QString &title, const QString &command)
-{
-    const QStringList shellArguments = runAndStay(shell, command);
-    const QString wt = QStandardPaths::findExecutable(QStringLiteral("wt"));
-    if (!wt.isEmpty()) {
-        QStringList arguments{QStringLiteral("-d"), QDir::toNativeSeparators(dir)};
-        if (!title.isEmpty()) {
-            arguments << QStringLiteral("--title") << title;
-        }
-        arguments << QDir::toNativeSeparators(shell);
-        for (const QString &argument : shellArguments) {
-            QString escaped = argument;
-            arguments << escaped.replace(QLatin1Char(';'), QStringLiteral("\\;")); // ; separates Windows Terminal's own commands
-        }
-        QProcess::startDetached(wt, arguments, dir);
-        return;
-    }
-    Lieve::Platform::startInConsole(shell, shellArguments, dir);
-}
-#endif
 }
 
 bool TerminalPanel::embedded()
 {
-#ifdef Q_OS_WIN
-    // Konsole is not part of Lieve's Windows build: Windows Terminal instead.
+    // Without the Konsole part (Windows; Linux without Konsole installed),
+    // terminals open outside Lieve.
     static const bool available = KPluginMetaData(QStringLiteral("kf6/parts/konsolepart")).isValid();
     return available;
-#else
-    return true;
-#endif
 }
 
 TerminalPanel::TerminalPanel(QWidget *parent)
@@ -381,12 +335,10 @@ void TerminalPanel::newTerminal(const QString &dir, const QString &shellPath)
 {
     const QString shell = shellPath.isEmpty() ? resolveShell(shellSetting()) : shellPath;
     const QString workDir = !dir.isEmpty() ? dir : (!m_dir.isEmpty() ? m_dir : QDir::homePath());
-#ifdef Q_OS_WIN
     if (!embedded()) {
-        openExternalTerminal(workDir, shell, QString(), QString());
+        Lieve::Platform::openTerminal(workDir, shell, QString(), QString());
         return;
     }
-#endif
     const auto result = KPluginFactory::instantiatePlugin<KParts::ReadOnlyPart>(KPluginMetaData(QStringLiteral("kf6/parts/konsolepart")), this);
     if (!result.plugin) {
         auto *error = new QLabel(tr("Could not load the Konsole terminal.\n%1\n\nInstall Konsole: pacman -S konsole")
@@ -485,12 +437,10 @@ void typeWhenReady(KParts::ReadOnlyPart *part, const QString &text)
 
 QWidget *TerminalPanel::runCommand(const QString &dir, const QString &title, const QString &command, QWidget *reuse)
 {
-#ifdef Q_OS_WIN
     if (!embedded()) {
-        openExternalTerminal(dir, resolveShell(shellSetting()), title, command);
+        Lieve::Platform::openTerminal(dir, resolveShell(shellSetting()), title, command);
         return nullptr;
     }
-#endif
     KParts::ReadOnlyPart *part = reuse ? m_parts.value(reuse).data() : nullptr;
     auto *terminal = qobject_cast<TerminalInterface *>(part);
     if (!terminal || terminal->foregroundProcessId() != -1) { // closed, or still running something

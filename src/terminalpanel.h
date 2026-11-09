@@ -47,8 +47,8 @@ public:
     void selectTerminal();
     // For [terminal] shell=: the names of the installed shells ("fish") and
     // of the login shell, the one "auto" runs.
-    // False on Windows without the Konsole part: terminals then open in
-    // Windows Terminal (or a console window) instead of the panel.
+    // False without the Konsole part (Windows, or Linux without Konsole):
+    // terminals then open outside Lieve instead of in the panel.
     static bool embedded();
     static QStringList shellNames();
     static QString loginShellName();

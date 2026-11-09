@@ -6,6 +6,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # From release.yml: the zip is also attached to that release.
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
 
 jobs:
   build:
@@ -26,10 +32,6 @@ jobs:
             ktexteditor:p kparts:p kxmlgui:p kcoreaddons:p kdbusaddons:p kwindowsystem:p
             syntax-highlighting:p kconfig:p kwidgetsaddons:p ki18n:p breeze-icons:p
             ripgrep:p
-      - name: Where Qt keeps its tools
-        run: |
-          for v in prefix bindir libexecdir includedir; do echo "$v=$(pkg-config --variable=$v Qt6Core)"; done
-          ls "$(pkg-config --variable=libexecdir Qt6Core)" | head -n 30 || true
       - name: Build
         run: make -j"$(nproc)"
       - name: Test
@@ -40,3 +42,12 @@ jobs:
         with:
           name: lieve-windows
           path: dist/Lieve
+      - name: Attach the zip to the release
+        if: inputs.tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = "Lieve-${{ inputs.tag }}-windows-x64.zip"
+          Compress-Archive -Path dist/Lieve -DestinationPath $zip
+          gh release upload "${{ inputs.tag }}" $zip --clobber --repo "${{ github.repository }}"

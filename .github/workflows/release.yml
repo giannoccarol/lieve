@@ -60,3 +60,10 @@ jobs:
           git config user.email "$(git -C .. log -1 --format=%ae)"
           git add PKGBUILD .SRCINFO
           git diff --cached --quiet || { git commit -m "Update to $version" && git push origin HEAD:master; }
+
+  # Lieve for Windows: built, tested and attached to the release as a zip.
+  windows:
+    needs: release
+    uses: ./.github/workflows/windows.yml
+    with:
+      tag: ${{ github.ref_name }}

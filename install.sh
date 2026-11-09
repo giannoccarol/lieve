@@ -16,16 +16,20 @@ for tool in git make g++ pkg-config; do
 done
 pkg-config --exists Qt6Widgets Qt6DBus Qt6Network 2>/dev/null || missing+=("Qt 6 (widgets, dbus, network)")
 [ -d /usr/include/KF6/KTextEditor ] || missing+=("KDE Frameworks 6 (KTextEditor, KParts)")
-command -v konsole >/dev/null 2>&1 || missing+=("konsole (for the built-in terminal)")
+[ -d /usr/include/KF6/BreezeIcons ] || missing+=("Breeze icons library (headers)")
 command -v rg >/dev/null 2>&1 || missing+=("ripgrep (for search)")
 
 if [ ${#missing[@]} -gt 0 ]; then
     echo "Missing: ${missing[*]}"
     echo
     echo "Arch / CachyOS / Manjaro:"
-    echo "  sudo pacman -S --needed base-devel git qt6-base qt6-svg qt6-tools ktexteditor kparts kdbusaddons kwindowsystem syntax-highlighting ki18n konsole ripgrep"
+    echo "  sudo pacman -S --needed base-devel git qt6-base qt6-svg qt6-tools ktexteditor kparts kdbusaddons kwindowsystem syntax-highlighting ki18n breeze-icons konsole ripgrep"
     echo "Fedora:"
-    echo "  sudo dnf install gcc-c++ make git qt6-qtbase-devel qt6-qtsvg-devel qt6-linguist kf6-ktexteditor-devel kf6-kparts-devel kf6-kdbusaddons-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel kf6-ki18n-devel konsole ripgrep"
+    echo "  sudo dnf install gcc-c++ make git pkgconf qt6-qtbase-devel qt6-qtsvg-devel qt6-linguist kf6-ktexteditor-devel kf6-kparts-devel kf6-kxmlgui-devel kf6-kdbusaddons-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel kf6-ki18n-devel 'cmake(KF6BreezeIcons)' konsole ripgrep"
+    echo "Debian 13 / Ubuntu 25.04 and later:"
+    echo "  sudo apt install build-essential git pkgconf qt6-base-dev qt6-svg-dev qt6-l10n-tools libkf6texteditor-dev libkf6parts-dev libkf6xmlgui-dev libkf6dbusaddons-dev libkf6windowsystem-dev libkf6syntaxhighlighting-dev libkf6i18n-dev libkf6breezeicons-dev konsole ripgrep"
+    echo
+    echo "konsole is optional: without it Lieve's terminals open in your terminal app."
     exit 1
 fi
 

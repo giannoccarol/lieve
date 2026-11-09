@@ -11,9 +11,45 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install dependencies
-        run: pacman -Syu --noconfirm --needed base-devel git pkgconf qt6-base qt6-svg ktexteditor kparts kdbusaddons kwindowsystem syntax-highlighting ki18n qt6-tools
+        run: pacman -Syu --noconfirm --needed base-devel git pkgconf qt6-base qt6-svg ktexteditor kparts kdbusaddons kwindowsystem syntax-highlighting ki18n qt6-tools breeze-icons
       - uses: actions/checkout@v4
       - name: Build
         run: make -j"$(nproc)"
       - name: Test
         run: make -j"$(nproc)" check
+
+  # The same build on the other families install.sh names, with its package lists.
+  debian:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential git pkgconf ca-certificates \
+            qt6-base-dev qt6-svg-dev qt6-l10n-tools qt6-qpa-plugins libkf6texteditor-dev libkf6parts-dev libkf6xmlgui-dev \
+            libkf6dbusaddons-dev libkf6windowsystem-dev libkf6syntaxhighlighting-dev libkf6i18n-dev libkf6breezeicons-dev
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Test
+        run: |
+          git config --global user.name CI && git config --global user.email ci@example.com
+          make -j"$(nproc)" check
+
+  fedora:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y gcc-c++ make git pkgconf qt6-qtbase-devel qt6-qtsvg-devel qt6-linguist kf6-ktexteditor-devel kf6-kparts-devel \
+            kf6-kxmlgui-devel kf6-kdbusaddons-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel kf6-ki18n-devel 'cmake(KF6BreezeIcons)'
+          rpm -qf /usr/include/KF6/BreezeIcons
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Test
+        run: |
+          git config --global user.name CI && git config --global user.email ci@example.com
+          make -j"$(nproc)" check

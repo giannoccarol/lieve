@@ -29,9 +29,9 @@ QT_LIBS := $(shell pkg-config --libs Qt6Widgets Qt6DBus Qt6Network)
 # KF6 headers sit next to Qt's: /usr/include/KF6, or /ucrt64/include/KF6 in MSYS2.
 KF_INCLUDE ?= $(firstword $(wildcard $(dir $(shell pkg-config --variable=includedir Qt6Core))KF6) /usr/include/KF6)
 KF_CFLAGS := $(addprefix -I,$(patsubst %/,%,$(wildcard $(KF_INCLUDE)/*/)))
-KF_LIBS := -lKF6TextEditor -lKF6Parts -lKF6XmlGui -lKF6CoreAddons -lKF6DBusAddons -lKF6WindowSystem -lKF6SyntaxHighlighting -lKF6ConfigCore -lKF6WidgetsAddons -lKF6I18n
-# Windows has no icon theme: Breeze comes built into this library.
-KF_LIBS += $(if $(WINDOWS),-lKF6BreezeIcons)
+# KF6BreezeIcons: the Breeze icons built into a library, for Windows (no icon
+# theme) and for desktops whose theme lacks some (GNOME's Adwaita…).
+KF_LIBS := -lKF6TextEditor -lKF6Parts -lKF6XmlGui -lKF6CoreAddons -lKF6DBusAddons -lKF6WindowSystem -lKF6SyntaxHighlighting -lKF6ConfigCore -lKF6WidgetsAddons -lKF6I18n -lKF6BreezeIcons
 
 SRC := $(wildcard src/*.cpp)
 MOC_HEADERS := $(shell grep -l Q_OBJECT src/*.h)

@@ -1,7 +1,10 @@
 #pragma once
 
+#include <QColor>
 #include <QFont>
 #include <QStringList>
+
+#include <optional>
 
 class QProcess;
 
@@ -24,11 +27,25 @@ QStringList nodeBinDirs();
 // Cascadia Mono or Consolas on Windows (its "system" one is Courier New).
 QFont fixedFont();
 
-// Starts `program` in a console window of its own (Windows; elsewhere just
-// starts it), detached from Lieve.
-void startInConsole(const QString &program, const QStringList &arguments, const QString &dir);
+// True in a KDE Plasma session, whose palette and icon theme Lieve follows as
+// they are.
+bool isKdeSession();
 
-// Windows has no icon theme: Lieve brings Breeze (light or dark). Elsewhere
-// the desktop's theme is used.
+// A terminal outside Lieve, in `dir`, for when the Konsole part is not there:
+// Windows Terminal (or a console window) on Windows, the desktop's terminal
+// emulator on Linux. With a `command`, the shell runs it and stays open.
+void openTerminal(const QString &dir, const QString &shell, const QString &title, const QString &command);
+
+// The desktop's light/dark preference and accent colour, where Qt's palette
+// does not tell (GNOME and other desktops: the freedesktop portal; Windows:
+// its colour mode). Unknown values are left empty.
+struct Appearance {
+    std::optional<bool> dark;
+    QColor accent;
+};
+Appearance desktopAppearance();
+
+// Windows has no icon theme: Lieve brings Breeze (light or dark). Outside
+// Plasma, Breeze fills in the icons the desktop's theme lacks.
 void setupIcons(bool dark);
 }

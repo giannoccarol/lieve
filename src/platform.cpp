@@ -1,24 +1,67 @@
 #include "platform.h"
 
+#include <breezeicons.h>
+
 #include <QDir>
+#include <QFileInfo>
 #include <QFontDatabase>
+#include <QGuiApplication>
 #include <QHash>
 #include <QIcon>
 #include <QProcess>
+#include <QStandardPaths>
+#include <QStyleHints>
 
 #ifdef Q_OS_WIN
-#include <breezeicons.h>
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include <windows.h>
 #else
+#include <QDBusArgument>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusVariant>
+
 #include <signal.h>
 #include <unistd.h>
 #endif
 
 namespace Lieve::Platform
 {
+bool isKdeSession()
+{
+    return qEnvironmentVariable("XDG_CURRENT_DESKTOP").contains(QLatin1String("KDE"), Qt::CaseInsensitive);
+}
+
+namespace
+{
+// The arguments that make `shell` run `command` and stay open afterwards
+// (the output stays readable and the command can be run again).
+QStringList runAndStay(const QString &shell, const QString &command)
+{
+    if (command.isEmpty()) {
+        return {};
+    }
+    const QString name = QFileInfo(shell).completeBaseName().toLower();
+    if (name == QLatin1String("pwsh") || name == QLatin1String("powershell")) {
+        return {QStringLiteral("-NoExit"), QStringLiteral("-Command"), command};
+    }
+    if (name == QLatin1String("cmd")) {
+        return {QStringLiteral("/K"), command};
+    }
+    if (name == QLatin1String("wsl")) {
+        return {QStringLiteral("--"), QStringLiteral("bash"), QStringLiteral("-ic"), command + QStringLiteral("; exec bash")};
+    }
+#ifdef Q_OS_WIN
+    const QString again = QStringLiteral("bash"); // Git Bash
+#else
+    const QString again = shell;
+#endif
+    return {QStringLiteral("-ic"), command + QStringLiteral("; exec ") + again};
+}
+}
+
 #ifdef Q_OS_WIN
 namespace
 {
@@ -100,16 +143,42 @@ QFont fixedFont()
     return QFontDatabase::systemFont(QFontDatabase::FixedFont);
 }
 
-void startInConsole(const QString &program, const QStringList &arguments, const QString &dir)
+void openTerminal(const QString &dir, const QString &shell, const QString &title, const QString &command)
 {
+    const QStringList shellArguments = runAndStay(shell, command);
+    const QString wt = QStandardPaths::findExecutable(QStringLiteral("wt"));
+    if (!wt.isEmpty()) { // Windows Terminal
+        QStringList arguments{QStringLiteral("-d"), QDir::toNativeSeparators(dir)};
+        if (!title.isEmpty()) {
+            arguments << QStringLiteral("--title") << title;
+        }
+        arguments << QDir::toNativeSeparators(shell);
+        for (const QString &argument : shellArguments) {
+            QString escaped = argument;
+            arguments << escaped.replace(QLatin1Char(';'), QStringLiteral("\\;")); // ; separates Windows Terminal's own commands
+        }
+        QProcess::startDetached(wt, arguments, dir);
+        return;
+    }
+    // The shell in a console window of its own.
     QProcess process;
-    process.setProgram(program);
-    process.setArguments(arguments);
+    process.setProgram(shell);
+    process.setArguments(shellArguments);
     process.setWorkingDirectory(dir);
     process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *args) {
         args->flags = (args->flags & ~DWORD(CREATE_NO_WINDOW)) | CREATE_NEW_CONSOLE;
     });
     process.startDetached();
+}
+
+Appearance desktopAppearance()
+{
+    Appearance appearance;
+    const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme(); // Settings > Personalization > Colors
+    if (scheme != Qt::ColorScheme::Unknown) {
+        appearance.dark = scheme == Qt::ColorScheme::Dark;
+    }
+    return appearance; // the accent is in Qt's palette (Highlight)
 }
 
 void setupIcons(bool dark)
@@ -144,13 +213,140 @@ QFont fixedFont()
     return QFontDatabase::systemFont(QFontDatabase::FixedFont);
 }
 
-void startInConsole(const QString &program, const QStringList &arguments, const QString &dir)
+namespace
 {
-    QProcess::startDetached(program, arguments, dir);
+struct Emulator {
+    const char *program;
+    QStringList (*arguments)(const QString &dir, const QStringList &command);
+};
+
+// Terminal emulators, the user's choice first ($TERMINAL, then the
+// xdg-terminal-exec standard), then the usual ones of each desktop.
+const Emulator kEmulators[] = {
+    {"xdg-terminal-exec", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("--dir=") + dir} + command;
+     }},
+    {"kgx", [](const QString &dir, const QStringList &command) { // GNOME Console
+         return QStringList{QStringLiteral("--working-directory=") + dir} + (command.isEmpty() ? QStringList() : QStringList{QStringLiteral("--")} + command);
+     }},
+    {"ptyxis", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("--new-window"), QStringLiteral("--working-directory=") + dir}
+             + (command.isEmpty() ? QStringList() : QStringList{QStringLiteral("--")} + command);
+     }},
+    {"gnome-terminal", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("--working-directory=") + dir} + (command.isEmpty() ? QStringList() : QStringList{QStringLiteral("--")} + command);
+     }},
+    {"konsole", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("--workdir"), dir} + (command.isEmpty() ? QStringList() : QStringList{QStringLiteral("-e")} + command);
+     }},
+    {"xfce4-terminal", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("--working-directory=") + dir} + (command.isEmpty() ? QStringList() : QStringList{QStringLiteral("-x")} + command);
+     }},
+    {"mate-terminal", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("--working-directory=") + dir} + (command.isEmpty() ? QStringList() : QStringList{QStringLiteral("-x")} + command);
+     }},
+    {"alacritty", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("--working-directory"), dir} + (command.isEmpty() ? QStringList() : QStringList{QStringLiteral("-e")} + command);
+     }},
+    {"kitty", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("--directory"), dir} + command;
+     }},
+    {"foot", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("--working-directory=") + dir} + command;
+     }},
+    {"wezterm", [](const QString &dir, const QStringList &command) {
+         return QStringList{QStringLiteral("start"), QStringLiteral("--cwd"), dir} + (command.isEmpty() ? QStringList() : QStringList{QStringLiteral("--")} + command);
+     }},
+    {"x-terminal-emulator", [](const QString &, const QStringList &command) { // Debian's choice; opens in the working directory
+         return command.isEmpty() ? QStringList() : QStringList{QStringLiteral("-e")} + command;
+     }},
+    {"xterm", [](const QString &, const QStringList &command) {
+         return command.isEmpty() ? QStringList() : QStringList{QStringLiteral("-e")} + command;
+     }},
+};
+}
+
+void openTerminal(const QString &dir, const QString &shell, const QString &, const QString &command)
+{
+    const QStringList run = command.isEmpty() ? QStringList() : QStringList{shell} + runAndStay(shell, command);
+    // $TERMINAL: the user's own terminal, which opens in its working directory.
+    const QString own = qEnvironmentVariable("TERMINAL");
+    if (!own.isEmpty() && !QStandardPaths::findExecutable(own).isEmpty()) {
+        QProcess::startDetached(own, run.isEmpty() ? QStringList() : QStringList{QStringLiteral("-e")} + run, dir);
+        return;
+    }
+    for (const Emulator &emulator : kEmulators) {
+        const QString program = QStandardPaths::findExecutable(QString::fromLatin1(emulator.program));
+        if (!program.isEmpty()) {
+            QProcess::startDetached(program, emulator.arguments(dir, run), dir);
+            return;
+        }
+    }
+}
+
+namespace
+{
+// org.freedesktop.appearance from the desktop portal (GNOME, and every
+// desktop with xdg-desktop-portal): a short call, made once at start.
+QVariant portalSetting(const QString &key)
+{
+    for (const QString &method : {QStringLiteral("ReadOne"), QStringLiteral("Read")}) { // Read: older portals
+        QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"), QStringLiteral("/org/freedesktop/portal/desktop"),
+                                                           QStringLiteral("org.freedesktop.portal.Settings"), method);
+        call << QStringLiteral("org.freedesktop.appearance") << key;
+        const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 400);
+        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty()) {
+            continue;
+        }
+        QVariant value = reply.arguments().constFirst();
+        while (value.userType() == qMetaTypeId<QDBusVariant>()) { // Read wraps it twice
+            value = qvariant_cast<QDBusVariant>(value).variant();
+        }
+        return value;
+    }
+    return {};
+}
+}
+
+Appearance desktopAppearance()
+{
+    Appearance appearance;
+    const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
+    if (scheme != Qt::ColorScheme::Unknown) {
+        appearance.dark = scheme == Qt::ColorScheme::Dark;
+    }
+    if (isKdeSession() || !QDBusConnection::sessionBus().isConnected()) {
+        return appearance; // Plasma's palette has both
+    }
+    if (!appearance.dark) {
+        const uint value = portalSetting(QStringLiteral("color-scheme")).toUInt(); // 1 dark, 2 light
+        if (value == 1 || value == 2) {
+            appearance.dark = value == 1;
+        }
+    }
+    const QVariant accent = portalSetting(QStringLiteral("accent-color")); // (ddd), out of range when unset
+    if (accent.userType() == qMetaTypeId<QDBusArgument>()) {
+        const QDBusArgument argument = accent.value<QDBusArgument>();
+        double red = -1;
+        double green = -1;
+        double blue = -1;
+        argument.beginStructure();
+        argument >> red >> green >> blue;
+        argument.endStructure();
+        if (red >= 0 && red <= 1 && green >= 0 && green <= 1 && blue >= 0 && blue <= 1) {
+            appearance.accent = QColor::fromRgbF(float(red), float(green), float(blue));
+        }
+    }
+    return appearance;
 }
 
 void setupIcons(bool)
 {
+    // Outside Plasma the desktop's theme (Adwaita…) lacks many of the icons
+    // Lieve uses: Breeze, built into its library, fills in for them.
+    if (!isKdeSession()) {
+        BreezeIcons::initIcons();
+    }
 }
 #endif
 }
