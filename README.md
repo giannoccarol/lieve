@@ -33,12 +33,12 @@ project. Without one, Lieve stays as light as above.
 | Part | Component |
 | --- | --- |
 | Editor | KTextEditor (the same as Kate): highlighting for hundreds of languages, multiple cursors, find/replace, `.editorconfig` |
-| Terminal | embedded Konsole (konsolepart): your login shell (or the one you pick) and your Konsole profile |
+| Terminal | embedded Konsole (konsolepart) when installed, else Lieve's built-in terminal (Qt Creator's terminal view over libvterm, with a pty or ConPTY): your login shell or the one you pick |
 | Search and `Ctrl+P` | ripgrep (`rg`): honours `.gitignore`, skips `node_modules` |
 | File icons | read from the VS Code extensions already installed (`workbench.iconTheme`, e.g. vscode-icons) |
 | Editor theme | "VSCodium Dark" with a dark system theme, "Breeze Light" with a light one |
 | Window look | colours derived from the editor theme (Qt palette + style sheet), like VS Code |
-| Multiple windows | a single process (KDBusService): running `lieve` again hands the request to the open one |
+| Multiple windows | a single process (KDBusService; a named pipe on Windows): running `lieve` again hands the request to the open one |
 | Formatting | the project's own Prettier and ESLint (`node_modules`), kept loaded by a small Node process |
 | Git | the `git` command (status with `--porcelain=v2`), one operation at a time in the background |
 | Language intelligence | language servers (LSP) such as `typescript-language-server`, started only when needed |
@@ -59,8 +59,7 @@ and `symbolpicker` (language servers), `backups` (hot exit), `settingsdialog`, `
 Any desktop works: Lieve needs KDE Frameworks 6 (the libraries, not Plasma) with `qt6-base`, `qt6-svg`,
 `ktexteditor`, `kparts`, `kdbusaddons`, `kwindowsystem`, `syntax-highlighting`, `ki18n`, `breeze-icons` and
 `ripgrep`, plus `git`, `gcc`, `make`, `pkgconf` and `qt6-tools` (for the translations; without it Lieve builds
-in English only) to build it. `konsole` is optional: with it the terminal sits in Lieve's panel, without it
-terminals open in your terminal app. On Arch/CachyOS with Plasma almost everything is already installed;
+in English only) to build it. `konsole` is optional: without it the panel uses Lieve's built-in terminal. On Arch/CachyOS with Plasma almost everything is already installed;
 Debian 13, Ubuntu 25.04 and Fedora have all of it too (older Ubuntu releases only have KDE Frameworks 5).
 No CMake needed.
 
@@ -93,13 +92,14 @@ GNOME), and the Breeze icons fill in those the desktop's icon theme lacks.
 Download `Lieve-…-windows-x64.zip` from the [latest release](https://github.com/giannoccarol/lieve/releases/latest),
 unzip it anywhere and run `lieve.exe` (Windows 10 or 11, 64-bit; nothing to install, ripgrep included).
 For the Git features install [Git for Windows](https://git-scm.com/download/win); for Prettier, ESLint and the
-language servers, [Node.js](https://nodejs.org/). Terminals and npm scripts open in
-[Windows Terminal](https://aka.ms/terminal) (or a console window), with PowerShell 7, Windows PowerShell, cmd,
-Git Bash or WSL. Lieve follows Windows' light/dark mode and accent colour.
+language servers, [Node.js](https://nodejs.org/). The terminal sits in Lieve's panel as on Linux, with
+PowerShell 7, Windows PowerShell, cmd, Git Bash or WSL (Windows 10 1903 or later). Lieve follows Windows'
+light/dark mode and accent colour; opening a file while Lieve runs brings it to the open window.
 
-The Windows build is new: for now each launch is a process of its own, and updates are a new zip from the
-release page (Lieve tells you when one is out). It is built with [MSYS2](https://www.msys2.org/) and the same
-Makefile, see [`packaging/windows`](packaging/windows) and the Windows workflow.
+Updates come from Lieve itself, as on Linux: **Update Now** downloads the new zip, and **Restart** swaps the
+folder and reopens your projects (keep Lieve in a folder you can write to, not in Program Files; otherwise the
+update opens the release page). It is built with [MSYS2](https://www.msys2.org/) and the same Makefile, see
+[`packaging/windows`](packaging/windows) and the Windows workflow.
 
 ### Updates
 
@@ -108,8 +108,8 @@ If there is one, the status bar shows **⬆ Update 0.x.y**: one click shows what
 **Update Now** downloads, builds and installs the new version in the background, in the same
 folder Lieve is installed in. When it's done, click **↻ Restart**. The downloaded sources stay in
 `~/.local/share/lieve/source`. Turn the check off with `[updates] check=false` in the settings (`Ctrl+,`).
-Packages (`make PACKAGED=1`, as the AUR ones) leave updates to the package manager; on Windows the update
-opens the release page with the new zip.
+Packages (`make PACKAGED=1`, as the AUR ones) leave updates to the package manager. On Windows the update
+downloads the release's zip instead of building.
 
 ## Usage
 
@@ -232,9 +232,10 @@ exclude). `Ctrl+Shift+H` (or the chevron next to the search box) shows a **Repla
 `Ctrl+J` shows the terminal panel, `` Ctrl+Shift+` `` (or **+**) opens a new terminal in the project folder.
 
 - New terminals run your **login shell** (the one set with `chsh`, e.g. fish), not `$SHELL`.
-- Without Konsole (on Windows, or a Linux desktop without it) terminals and npm scripts open in your terminal
-  app instead: `$TERMINAL`, `xdg-terminal-exec`, GNOME Console, Ptyxis, gnome-terminal, xfce4-terminal, kitty,
-  Alacritty, foot…; on Windows, Windows Terminal or a console window.
+- Without Konsole (on Windows, or a Linux desktop without it) the panel uses Lieve's **built-in terminal**,
+  with the same colours and font: `Ctrl+Shift+C` / `Ctrl+Shift+V` (also `Ctrl+C` with a selection and `Ctrl+V`
+  on Windows), mouse selection, a right-click menu. `[terminal] engine=auto|konsole|builtin` picks it
+  (`auto`: Konsole when installed). On Windows it runs PowerShell 7, Windows PowerShell, cmd, Git Bash or WSL.
 - The **⌄** button next to **+** lists the shells installed on the system (from `/etc/shells`): pick one to
   open a terminal with it, or set it as the default under **Default Shell**.
   The choice is saved in `lieve.conf` (`[terminal] shell=`) and applies to every window.
@@ -472,6 +473,13 @@ Lieve puts together components written by others; the credit for the heavy lifti
   including the "VSCodium Dark" theme), [Konsole](https://invent.kde.org/utilities/konsole) (terminal),
   [KParts](https://invent.kde.org/frameworks/kparts), KXmlGui, KCoreAddons, KDBusAddons (single instance),
   KWindowSystem (window activation on Wayland). LGPL/GPL licences.
+- **Qt Creator** (The Qt Company Ltd. and contributors, [github.com/qt-creator/qt-creator](https://github.com/qt-creator/qt-creator),
+  commit 9143991): Lieve's built-in terminal is Qt Creator's terminal view (`src/libs/solutions/terminal`,
+  GPL-3.0-or-later or GPL-3.0 with the Qt GPL exception; two files are GPL-3.0-only with the exception, so Lieve
+  as a whole is GPL-3.0; `scrollback` is BSD-3-Clause, by Justin Bronder). See [`src/3rdparty`](src/3rdparty).
+- **libvterm** by Paul Evans (MIT), as adapted in Qt Creator; **Pty-Qt** by Vitaly Petrov
+  ([kafeg/ptyqt](https://github.com/kafeg/ptyqt), MIT), with ConPTY code from Microsoft's
+  [Windows Terminal](https://github.com/microsoft/terminal) (MIT).
 - **MSYS2** ([msys2.org](https://www.msys2.org/), its developers and packagers): the Windows build uses its Qt,
   KDE Frameworks and ripgrep packages, which the Windows zip bundles.
 - **The Qt Company and contributors**: [Qt 6](https://www.qt.io/). The Markdown preview uses Qt's Markdown

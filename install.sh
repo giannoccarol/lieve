@@ -29,7 +29,7 @@ if [ ${#missing[@]} -gt 0 ]; then
     echo "Debian 13 / Ubuntu 25.04 and later:"
     echo "  sudo apt install build-essential git pkgconf qt6-base-dev qt6-svg-dev qt6-l10n-tools libkf6texteditor-dev libkf6parts-dev libkf6xmlgui-dev libkf6dbusaddons-dev libkf6windowsystem-dev libkf6syntaxhighlighting-dev libkf6i18n-dev libkf6breezeicons-dev konsole ripgrep"
     echo
-    echo "konsole is optional: without it Lieve's terminals open in your terminal app."
+    echo "konsole is optional: without it Lieve uses its built-in terminal."
     exit 1
 fi
 

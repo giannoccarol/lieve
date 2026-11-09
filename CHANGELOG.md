@@ -5,12 +5,13 @@ Lieve shows when it offers the update.
 
 ## v0.1.5
 
-- Windows: Lieve runs on Windows 10/11 (64-bit) from a zip attached to each release, built with MSYS2.
-  Terminals and npm scripts open in Windows Terminal (PowerShell, cmd, Git Bash, WSL); Node.js, VS Code
-  settings and icons are found where Windows keeps them; Breeze icons and ripgrep are bundled.
+- Windows: Lieve runs on Windows 10/11 (64-bit) from a zip attached to each release, built with MSYS2: the
+  terminal in the panel (PowerShell, cmd, Git Bash, WSL), updates from Lieve itself (download, then restart),
+  one process for all windows, its own icon; Node.js, VS Code settings and icons are found where Windows keeps
+  them; Breeze icons and ripgrep are bundled.
 - Any Linux desktop: light/dark mode and accent colour from the freedesktop portal (GNOME and others),
-  Breeze icons where the desktop's theme lacks them, and without Konsole terminals open in the desktop's
-  terminal app. `install.sh` knows Debian 13 / Ubuntu 25.04+; CI builds on Arch, Debian and Fedora.
+  Breeze icons where the desktop's theme lacks them, and without Konsole a built-in terminal in the panel
+  (Qt Creator's terminal view over libvterm; `[terminal] engine=auto|konsole|builtin`). `install.sh` knows Debian 13 / Ubuntu 25.04+; CI builds on Arch, Debian and Fedora.
 - `[editor] theme=auto` follows the desktop's light or dark mode (also on Windows).
 
 ## v0.1.4

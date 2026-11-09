@@ -9,7 +9,7 @@ license=('GPL-3.0-only')
 depends=('qt6-base' 'qt6-svg' 'ktexteditor' 'kparts' 'kxmlgui' 'kcoreaddons' 'kconfig' 'kwidgetsaddons'
          'kdbusaddons' 'kwindowsystem' 'ki18n' 'syntax-highlighting' 'breeze-icons' 'ripgrep' 'git' 'hicolor-icon-theme')
 makedepends=('qt6-tools' 'pkgconf')
-optdepends=('konsole: integrated terminal (without it terminals open in your terminal app)'
+optdepends=('konsole: Konsole as the terminal in the panel (otherwise Lieve'"'"'s built-in one)'
             'nodejs: Prettier and ESLint on save, with the project'"'"'s own packages'
             'typescript-language-server: go to definition, errors and completion for TypeScript/JavaScript')
 provides=('lieve')
