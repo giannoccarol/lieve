@@ -51,6 +51,9 @@ void discover(const QString &root, QStringList &out)
         if (out.size() >= kMaxDiscovered) {
             return;
         }
+        if (entry.startsWith(QLatin1Char('.'))) { // hidden on Linux, not on Windows
+            continue;
+        }
         const QString path = dir.filePath(entry);
         if (isRepository(path)) {
             out << path;
@@ -60,6 +63,9 @@ void discover(const QString &root, QStringList &out)
         const QStringList children = QDir(path).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
         if (children.size() <= 100) {
             for (const QString &child : children) {
+                if (child.startsWith(QLatin1Char('.'))) {
+                    continue;
+                }
                 const QString childPath = path + QLatin1Char('/') + child;
                 if (isRepository(childPath)) {
                     repositories << childPath;

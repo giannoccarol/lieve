@@ -275,6 +275,10 @@ QList<Package> findPackages(const QString &root)
 
     QStringList folders = QDir(root).entryList(QDir::Dirs | QDir::NoDotAndDotDot); // without hidden ones
     folders.removeAll(QStringLiteral("node_modules"));
+    // .angular, .vscode, …: hidden on Linux, but not on Windows
+    folders.removeIf([](const QString &folder) {
+        return folder.startsWith(QLatin1Char('.'));
+    });
     QCollator collator;
     collator.setNumericMode(true);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
