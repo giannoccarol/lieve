@@ -8,7 +8,9 @@
 
 #ifdef Q_OS_WIN
 #include <breezeicons.h>
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #else
 #include <signal.h>

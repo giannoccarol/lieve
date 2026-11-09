@@ -9,6 +9,7 @@ out=dist/Lieve
 rm -rf dist
 mkdir -p "$out"
 cp lieve.exe "$out/"
+strip "$out/lieve.exe"
 
 # Qt plugins, next to the program (qt.conf below points there).
 platforms=$(find "$prefix" -name qwindows.dll -path '*platforms*' | head -n1)
@@ -20,6 +21,7 @@ for dir in platforms styles imageformats iconengines tls; do
     case $dir in
     platforms) cp "$plugins/$dir/qwindows.dll" "$out/$dir/" ;;
     imageformats) cp "$plugins/$dir"/q{svg,ico,jpeg,gif,webp}.dll "$out/$dir/" 2>/dev/null || true ;;
+    tls) cp "$plugins/$dir/qschannelbackend.dll" "$out/$dir/" ;; # Windows' own TLS: no OpenSSL to ship
     *) cp "$plugins/$dir"/*.dll "$out/$dir/" ;;
     esac
 done
@@ -42,15 +44,22 @@ while :; do
 done
 
 # Translations: Qt's own and the KDE Frameworks' (KI18n looks in data/locale).
-mkdir -p "$out/translations"
-qttranslations=$(dirname "$(find "$prefix" -name 'qtbase_it.qm' | head -n1)")
+qtbase=$(find "$prefix/share" -name 'qtbase_it.qm' | head -n1)
+echo "Qt translations: ${qtbase:-not found}"
 for lang in it; do
-    cp "$qttranslations/qtbase_$lang.qm" "$out/translations/" 2>/dev/null || true
-    mkdir -p "$out/data/locale/$lang/LC_MESSAGES"
-    for domain in ktexteditor6 kxmlgui6 kparts6 kwidgetsaddons6 kconfig6 kcoreaddons6 ki18n6 syntaxhighlighting6 kdbusaddons6; do
-        cp "$prefix/share/locale/$lang/LC_MESSAGES/$domain.mo" "$out/data/locale/$lang/LC_MESSAGES/" 2>/dev/null || true
+    if [ -n "$qtbase" ] && [ -f "$(dirname "$qtbase")/qtbase_$lang.qm" ]; then
+        mkdir -p "$out/translations"
+        cp "$(dirname "$qtbase")/qtbase_$lang.qm" "$out/translations/"
+    fi
+    for domain in ktexteditor6 kxmlgui6 kparts6 kwidgetsaddons6 kconfig6 kcoreaddons6 ki18n6 syntaxhighlighting6 kdbusaddons6 kconfigwidgets6 kcompletion6 sonnet6 kio6; do
+        mo=$(find "$prefix/share/locale/$lang" -name "$domain.mo" 2>/dev/null | head -n1)
+        if [ -n "$mo" ]; then
+            mkdir -p "$out/data/locale/$lang/LC_MESSAGES"
+            cp "$mo" "$out/data/locale/$lang/LC_MESSAGES/"
+        fi
     done
 done
+echo "KDE translations: $(ls "$out/data/locale/it/LC_MESSAGES" 2>/dev/null | tr '\n' ' ')"
 
 cat > "$out/qt.conf" <<'EOF'
 [Paths]

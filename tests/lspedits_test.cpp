@@ -169,6 +169,7 @@ int main(int argc, char **argv)
         expect(applyTextEditsToFile(crlf, {edit(0, 16, 0, 21, QStringLiteral("hello")), edit(1, 0, 1, 5, QStringLiteral("hello"))}) == FileEditResult::Done,
                "file: rewritten");
         expect(readFile(crlf) == QByteArray("\xEF\xBB\xBF") + "export function hello() {}\r\nhello();\r\n", "file: BOM and CRLF kept");
+#ifndef Q_OS_WIN // Unix permissions and symbolic links (QFile::link makes a .lnk shortcut on Windows)
         const QFileDevice::Permissions user = QFileDevice::ReadUser | QFileDevice::WriteUser | QFileDevice::ExeUser;
         expect((QFile::permissions(crlf) & ~user) == (QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner | QFileDevice::ReadGroup),
                "file: permissions kept");
@@ -178,6 +179,7 @@ int main(int argc, char **argv)
         expect(applyTextEditsToFile(link, {edit(1, 0, 1, 5, QStringLiteral("hi"))}) == FileEditResult::Done && QFileInfo(link).isSymLink()
                    && readFile(crlf).endsWith("\r\nhi();\r\n"),
                "file: a link stays a link, its target is changed");
+#endif
 
         const QString latin1 = dir.filePath(QStringLiteral("latin1.ts"));
         writeFile(latin1, "const caf\xE9 = 1;\n");
