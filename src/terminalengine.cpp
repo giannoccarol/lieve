@@ -1,6 +1,7 @@
 #include "terminalengine.h"
 
 #include <QFileInfo>
+#include <QRegularExpression>
 
 namespace Lieve::Terminal
 {
@@ -51,12 +52,28 @@ QProcessEnvironment shellEnvironment(QProcessEnvironment environment, bool windo
     return environment;
 }
 
-QString tabTitle(const QString &title)
+QString tabTitle(const QString &title, const QString &shell)
 {
     QString text = title.trimmed();
     const QString path = QString(text).replace(QLatin1Char('\\'), QLatin1Char('/')); // a Windows console's title
     if (path.contains(QLatin1Char('/')) && path.endsWith(QLatin1String(".exe"), Qt::CaseInsensitive)) {
         text = QFileInfo(path).completeBaseName();
+    } else if (!shell.isEmpty()) {
+        static const QRegularExpression userAtHost(QStringLiteral("^[^@\\s]+@[^:\\s]+:")); // bash: "user@host:"
+        static const QRegularExpression drive(QStringLiteral("^[A-Za-z]:[\\\\/]"));
+        QString where = text;
+        where.remove(userAtHost);
+        if (where.startsWith(shell + QLatin1Char(' '))) { // fish: "fish ~/dir"
+            where = where.mid(shell.size() + 1).trimmed();
+        }
+        if (where.startsWith(QLatin1Char('/')) || where.startsWith(QLatin1Char('~')) || drive.match(where).hasMatch()) {
+            QString dir = where.replace(QLatin1Char('\\'), QLatin1Char('/'));
+            while (dir.size() > 1 && dir.endsWith(QLatin1Char('/'))) {
+                dir.chop(1);
+            }
+            const QString name = dir.section(QLatin1Char('/'), -1);
+            text = (name.isEmpty() ? dir : name) + QStringLiteral(" : ") + shell;
+        }
     }
     return text.size() > 40 ? text.left(39) + QStringLiteral("…") : text;
 }

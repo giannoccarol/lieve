@@ -436,7 +436,7 @@ QWidget *TerminalPanel::openBuiltin(const QString &dir, const QString &shell)
         return nullptr;
     }
     connect(terminal, &BuiltinTerminal::titleChanged, this, [this, terminal](const QString &title) {
-        setTitle(terminal, title);
+        setTitle(terminal, title, Lieve::Terminal::shellName(terminal->shell(), kWindows));
     });
     // The shell has exited ("exit" or Ctrl+D): its tab goes, as Konsole's does.
     connect(terminal, &BuiltinTerminal::finished, this, [this, terminal] {
@@ -460,11 +460,11 @@ void TerminalPanel::terminalGone()
     });
 }
 
-void TerminalPanel::setTitle(QWidget *terminal, const QString &title)
+void TerminalPanel::setTitle(QWidget *terminal, const QString &title, const QString &shell)
 {
     const int i = m_tabs->indexOf(terminal);
     if (i >= 0 && !title.trimmed().isEmpty()) {
-        m_tabs->setTabText(i, Lieve::Terminal::tabTitle(title));
+        m_tabs->setTabText(i, Lieve::Terminal::tabTitle(title, shell));
         m_tabs->setTabToolTip(i, title);
     }
 }

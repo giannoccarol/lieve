@@ -32,7 +32,8 @@ QStringList shellArguments(const QString &shell, bool windows);
 QProcessEnvironment shellEnvironment(QProcessEnvironment environment, bool windows);
 
 // A terminal's title (OSC 0/2) as a tab text: a program path is shortened to
-// the program's name ("C:\Windows\system32\cmd.exe" -> "cmd"), a long title
-// to 40 characters.
-QString tabTitle(const QString &title);
+// the program's name ("C:\Windows\system32\cmd.exe" -> "cmd"); with the
+// `shell`'s name, a title that is a folder ("user@host:~/dir", "fish ~/dir")
+// becomes "dir : shell", like Konsole's tabs; a long title is cut to 40.
+QString tabTitle(const QString &title, const QString &shell = QString());
 }

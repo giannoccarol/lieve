@@ -73,6 +73,14 @@ int main(int argc, char **argv)
     expect(tabTitle(QStringLiteral("C:\\Program Files\\PowerShell\\7\\pwsh.exe")) == QLatin1String("pwsh"), "a path with spaces: its name");
     expect(tabTitle(QStringLiteral("  fish  ~/Projects  ")) == QLatin1String("fish  ~/Projects"), "trimmed");
     expect(tabTitle(QStringLiteral("npm run build.exe")) == QLatin1String("npm run build.exe"), "no path: kept");
+    expect(tabTitle(QStringLiteral("lorenzo@pc:/tmp/work/proj"), QStringLiteral("bash")) == QLatin1String("proj : bash"), "bash's user@host:dir");
+    expect(tabTitle(QStringLiteral("fish ~/Projects/"), QStringLiteral("fish")) == QLatin1String("Projects : fish"), "fish's title");
+    expect(tabTitle(QStringLiteral("/t/c/p/lieve"), QStringLiteral("fish")) == QLatin1String("lieve : fish"), "a shortened path");
+    expect(tabTitle(QStringLiteral("~"), QStringLiteral("zsh")) == QLatin1String("~ : zsh"), "home");
+    expect(tabTitle(QStringLiteral("/"), QStringLiteral("zsh")) == QLatin1String("/ : zsh"), "the root");
+    expect(tabTitle(QStringLiteral("C:\\Users\\me\\Code"), QStringLiteral("pwsh")) == QLatin1String("Code : pwsh"), "a Windows folder");
+    expect(tabTitle(QStringLiteral("npm run build"), QStringLiteral("bash")) == QLatin1String("npm run build"), "a running command: kept");
+    expect(tabTitle(QStringLiteral("Windows PowerShell"), QStringLiteral("powershell")) == QLatin1String("Windows PowerShell"), "PowerShell's title: kept");
     const QString longTitle = tabTitle(QString(50, QLatin1Char('x')));
     expect(longTitle.size() == 40 && longTitle.endsWith(QStringLiteral("…")), "a long title: 40 characters");
 

@@ -80,7 +80,7 @@ private:
     void closeTerminal(int index);
     void terminalGone();
     bool isTerminal(QWidget *widget) const;
-    void setTitle(QWidget *terminal, const QString &title);
+    void setTitle(QWidget *terminal, const QString &title, const QString &shell = QString());
     bool shellReady(QWidget *terminal) const;
     bool atPrompt(QWidget *terminal) const;
     void sendInput(QWidget *terminal, const QString &text);
