@@ -98,6 +98,12 @@ void WindowManager::activate(MainWindow *window)
     KWindowSystem::updateStartupId(window->windowHandle());
     window->raise();
     KWindowSystem::activateWindow(window->windowHandle());
+#ifdef Q_OS_WIN
+    // KWindowSystem does nothing here on Windows. Windows lets the window come
+    // to the front when the second "lieve" launch allowed it
+    // (Platform::allowForeground), otherwise it flashes in the taskbar.
+    window->activateWindow();
+#endif
 }
 
 MainWindow *WindowManager::openProject(const QString &path, MainWindow *reuse)

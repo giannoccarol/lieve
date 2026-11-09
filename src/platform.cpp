@@ -188,6 +188,24 @@ void setupIcons(bool dark)
         QIcon::setThemeName(dark ? QStringLiteral("breeze-dark") : QStringLiteral("breeze"));
     }
 }
+
+void allowForeground(qintptr localSocket)
+{
+    ULONG server = 0;
+    // A QLocalSocket's descriptor is its named pipe handle.
+    if (localSocket != -1 && GetNamedPipeServerProcessId(reinterpret_cast<HANDLE>(localSocket), &server)) {
+        AllowSetForegroundWindow(DWORD(server));
+    } else {
+        AllowSetForegroundWindow(ASFW_ANY);
+    }
+}
+
+QString sessionKey()
+{
+    DWORD session = 0;
+    ProcessIdToSessionId(GetCurrentProcessId(), &session);
+    return qEnvironmentVariable("USERDOMAIN") + QLatin1Char('\\') + qEnvironmentVariable("USERNAME") + QLatin1Char('/') + QString::number(session);
+}
 #else
 void ownGroup(QProcess *process)
 {
@@ -347,6 +365,15 @@ void setupIcons(bool)
     if (!isKdeSession()) {
         BreezeIcons::initIcons();
     }
+}
+
+void allowForeground(qintptr)
+{
+}
+
+QString sessionKey()
+{
+    return QString::number(::getuid());
 }
 #endif
 }

@@ -33,7 +33,8 @@ public:
     // Shows the project chooser: an empty window if there is one, else a new one.
     void showChooser();
     void openFolderDialog(MainWindow *parent);
-    // Arguments as received by main() or by a second "lieve" launch (D-Bus).
+    // Arguments as received by main() or by a second "lieve" launch (D-Bus,
+    // or a named pipe on Windows: SingleInstance).
     void handleCommandLine(const QStringList &arguments, const QString &workingDirectory);
     bool closeAll();
     void deleteAll();

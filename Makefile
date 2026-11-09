@@ -45,6 +45,14 @@ $(warning lrelease not found: building without translations (install qt6-tools))
 QM :=
 endif
 OBJ := $(patsubst src/%.cpp,build/%.o,$(SRC)) $(MOC_SRC:.cpp=.o) build/qrc_lieve.o build/qrc_i18n.o
+ifdef WINDOWS
+# lieve.exe's icon and version for Explorer and Task Manager (data/lieve.rc).
+OBJ += build/lieve_rc.o
+endif
+WINDRES ?= windres
+comma := ,
+# "0.1.4" in src/version.h -> 0,1,4,0
+VERSION_NUMBERS = $(subst .,$(comma),$(shell sed -n 's/.*LIEVE_VERSION "\(.*\)".*/\1/p' src/version.h)),0
 
 all: $(BIN)
 
@@ -64,6 +72,10 @@ build/qrc_lieve.cpp: data/lieve.qrc data/lieve.svg | build
 
 build/qrc_lieve.o: build/qrc_lieve.cpp
 	$(CXX) $(CXXFLAGS) $(QT_CFLAGS) -c $< -o $@
+
+# data/lieve.ico is made from data/lieve.svg by packaging/windows/make-icon.sh.
+build/lieve_rc.o: data/lieve.rc data/lieve.ico src/version.h | build
+	$(WINDRES) -I src -I data -DLIEVE_VERSION_NUMBERS=$(VERSION_NUMBERS) $< -O coff -o $@
 
 # Translations (i18n/lieve_<language>.ts, made with "make translations") are
 # compiled and built into the program as :/i18n/lieve_<language>.qm.
@@ -108,6 +120,8 @@ build/tests/scopes_test$(EXE): build/scopes.o
 build/tests/lspedits_test$(EXE): build/lspedits.o
 build/tests/hunks_test$(EXE): build/linediff.o
 build/tests/staging_test$(EXE): build/linediff.o build/git.o build/moc_git.o build/prettier.o build/settings.o build/platform.o
+build/tests/selfupdate_test$(EXE): build/selfupdate.o
+build/tests/singleinstance_test$(EXE): build/singleinstance.o build/platform.o
 
 build/tests:
 	mkdir -p build/tests

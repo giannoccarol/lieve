@@ -48,4 +48,14 @@ Appearance desktopAppearance();
 // Windows has no icon theme: Lieve brings Breeze (light or dark). Outside
 // Plasma, Breeze fills in the icons the desktop's theme lacks.
 void setupIcons(bool dark);
+
+// On Windows only the process in the foreground may bring its windows to the
+// front: lets the one at the other end of `localSocket` (a QLocalSocket's
+// descriptor: the running Lieve) do it, or any process with -1. Nothing
+// elsewhere, where the window manager decides.
+void allowForeground(qintptr localSocket);
+
+// This user in this desktop session, as text: what one Lieve process serves
+// (Windows: domain, user name and session number; Linux: the user id).
+QString sessionKey();
 }

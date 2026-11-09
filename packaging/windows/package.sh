@@ -2,6 +2,9 @@
 # Collects lieve.exe with the DLLs, Qt plugins, translations and ripgrep it
 # needs into dist/Lieve: a folder that runs on Windows 10/11 without MSYS2.
 # Run in an MSYS2 UCRT64 shell after "make" (see .github/workflows/windows.yml).
+# Lieve's updater replaces the folder as a whole only when it holds nothing
+# but what this script puts there: adding a new kind of file or folder here
+# means adding it to kPackageFolders/kPackageFiles in src/selfupdate.cpp.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 prefix=${MINGW_PREFIX:-/ucrt64}
@@ -70,4 +73,22 @@ Translations = translations
 EOF
 
 cp LICENSE "$out/LICENSE.txt"
+sed 's/$/\r/' > "$out/README-Windows.txt" <<'EOF'
+Lieve for Windows
+=================
+
+Run lieve.exe (Windows 10 or 11, 64-bit). Nothing to install: this folder is
+the whole program and can sit anywhere, best where you can write (not under
+C:\Program Files), so that Lieve can update itself.
+
+Lieve uses these when they are installed:
+- Git for Windows (https://git-scm.com/download/win) for the Git features;
+- Node.js (https://nodejs.org/) for Prettier, ESLint, the language servers
+  of the project and npm scripts.
+
+Updates: Lieve tells you when a new version is out. "Update Now" downloads
+it, and it replaces this folder when Lieve restarts or quits.
+
+More: https://github.com/giannoccarol/lieve (licence: GPL-3.0, LICENSE.txt).
+EOF
 echo "Packaged $(du -sh "$out" | cut -f1) in $out"

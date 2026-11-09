@@ -17,6 +17,7 @@
 #include "symbolactions.h"
 #include "tabview.h"
 #include "settingsdialog.h"
+#include "singleinstance.h"
 #include "theme.h"
 #include "terminalpanel.h"
 #include "updater.h"
@@ -946,21 +947,24 @@ int main(int argc, char **argv)
     parser.process(app);
 
     // One process for all windows: a second "lieve" hands its arguments to
-    // the running one (via D-Bus) and exits immediately.
-    std::unique_ptr<KDBusService> service;
+    // the running one and exits immediately (via D-Bus; on Windows, which has
+    // no session bus, via a named pipe).
     const bool testRun = !qEnvironmentVariableIsEmpty("LIEVE_SCREENSHOT") && !qEnvironmentVariableIsSet("LIEVE_TEST_UNIQUE");
-#ifdef Q_OS_WIN
-    const bool separate = true; // Windows has no session bus: a process per launch, for now
-    Q_UNUSED(testRun)
-#else
     const bool separate = parser.isSet(QStringLiteral("new-instance")) || testRun;
-#endif
+    const auto handle = [](const QStringList &arguments, const QString &workingDirectory) {
+        WindowManager::instance().handleCommandLine(arguments, workingDirectory);
+    };
+#ifdef Q_OS_WIN
+    if (!separate && Lieve::SingleInstance::handOver(QCoreApplication::arguments(), QDir::currentPath(), &app, handle)) {
+        return 0;
+    }
+#else
+    std::unique_ptr<KDBusService> service;
     if (!separate) {
         service = std::make_unique<KDBusService>(KDBusService::Unique | KDBusService::NoExitOnFailure);
-        QObject::connect(service.get(), &KDBusService::activateRequested, &app, [](const QStringList &arguments, const QString &workingDirectory) {
-            WindowManager::instance().handleCommandLine(arguments, workingDirectory);
-        });
+        QObject::connect(service.get(), &KDBusService::activateRequested, &app, handle);
     }
+#endif
 
     Lieve::ensureConfigFile();
     // Lieve backs up unsaved files itself (hot exit, also against crashes), so

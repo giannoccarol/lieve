@@ -1,0 +1,36 @@
+// lieve.exe's icon and version, shown by Explorer and Task Manager. Built
+// with windres on Windows only (Makefile), which passes
+// LIEVE_VERSION_NUMBERS (0,1,4,0 for "0.1.4") taken from src/version.h.
+// No manifest here: MinGW links its default one.
+#include "version.h"
+
+IDI_ICON1 ICON "lieve.ico"
+
+1 VERSIONINFO
+FILEVERSION LIEVE_VERSION_NUMBERS
+PRODUCTVERSION LIEVE_VERSION_NUMBERS
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0x0L
+FILEOS 0x40004L // VOS_NT_WINDOWS32
+FILETYPE 0x1L // VFT_APP
+FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0" // U.S. English, Unicode
+        BEGIN
+            VALUE "CompanyName", "Lieve"
+            VALUE "FileDescription", "Lieve"
+            VALUE "FileVersion", LIEVE_VERSION
+            VALUE "InternalName", "lieve"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Lorenzo Giannoccaro. GPL-3.0."
+            VALUE "OriginalFilename", "lieve.exe"
+            VALUE "ProductName", "Lieve"
+            VALUE "ProductVersion", LIEVE_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

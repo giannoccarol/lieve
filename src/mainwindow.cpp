@@ -2216,9 +2216,18 @@ void MainWindow::updateUpdaterStatus()
                           QIcon(),
                           tr("Lieve %1 is available (current: %2)").arg(u.latestVersion(), QStringLiteral(LIEVE_VERSION)));
         break;
-    case Updater::State::Updating:
-        m_status->setItem(QStringLiteral("update"), tr("Updating…"), QIcon(), tr("Downloading, building and installing Lieve %1").arg(u.latestVersion()));
+    case Updater::State::Updating: {
+#ifdef Q_OS_WIN
+        const QString what = tr("Downloading and installing Lieve %1");
+#else
+        const QString what = tr("Downloading, building and installing Lieve %1");
+#endif
+        m_status->setItem(QStringLiteral("update"),
+                          u.progress() >= 0 ? tr("Updating… %1%").arg(u.progress()) : tr("Updating…"),
+                          QIcon(),
+                          what.arg(u.latestVersion()));
         break;
+    }
     case Updater::State::Updated:
         m_status->setItem(QStringLiteral("update"),
                           tr("↻ Restart to use %1").arg(u.latestVersion()),
@@ -2243,7 +2252,11 @@ void MainWindow::showUpdateDialog()
     box.setWindowTitle(tr("Lieve Update"));
     if (u.state() == Updater::State::Failed) {
         box.setText(tr("The update to Lieve %1 failed.").arg(u.latestVersion()));
+#ifdef Q_OS_WIN
+        box.setInformativeText(tr("The current version was left untouched. The details are below."));
+#else
         box.setInformativeText(tr("The current version was left untouched. The build details are below."));
+#endif
         box.setDetailedText(u.log().right(6000));
     } else {
         box.setText(tr("Lieve %1 is available (current: %2).").arg(u.latestVersion(), QStringLiteral(LIEVE_VERSION)));
