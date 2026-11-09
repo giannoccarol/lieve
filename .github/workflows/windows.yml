@@ -33,7 +33,6 @@ jobs:
       - name: Build
         run: make -j"$(nproc)"
       - name: Test
-        continue-on-error: true
         run: make -j"$(nproc)" check
       - name: Package
         run: bash packaging/windows/package.sh

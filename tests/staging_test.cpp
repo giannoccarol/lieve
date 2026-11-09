@@ -204,9 +204,13 @@ int main(int argc, char **argv)
     QFile::setPermissions(repo + QStringLiteral("/run.sh"), QFile::permissions(repo + QStringLiteral("/run.sh")) | QFile::ExeOwner);
     commitAll(repo, QStringLiteral("Script"));
     writeFile(repo + QStringLiteral("/run.sh"), "#!/bin/sh\necho b\necho c\n");
+#ifdef Q_OS_WIN // no executable bit on Windows (git's core.filemode is false): staging still works
+    expect(stage(repo, QStringLiteral("run.sh"), lines(2, 2)), "stage part of an executable");
+#else
     expect(indexEntry(repo, QStringLiteral("run.sh")).mode == QLatin1String("100755"), "an executable's mode");
     expect(stage(repo, QStringLiteral("run.sh"), lines(2, 2)), "stage part of an executable");
     expect(indexEntry(repo, QStringLiteral("run.sh")).mode == QLatin1String("100755"), "it is still executable in the index");
+#endif
     expect(indexText(repo, QStringLiteral("run.sh")) == "#!/bin/sh\necho c\n", "the selected line replaced the old one (different sizes)");
 
     // A new file: part of it staged, then unstaged again
