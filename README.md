@@ -445,15 +445,15 @@ Recent and pinned projects, and each project's session, are stored in `~/.local/
 
 ## Releasing a new version
 
-Versions go up one step at a time: 0.1.0, 0.1.1, 0.1.2, 0.1.3, 0.1.4, …
+Versions go up one step at a time: 0.1.0, 0.1.1, 0.1.2, 0.1.3, 0.1.4, 0.1.5, …
 
 1. Bump the number in `src/version.h`.
 2. Add a `## v0.1.x` section at the top of `CHANGELOG.md` with what's new.
 3. Commit, then create the tag and push it:
 
 ```bash
-git tag v0.1.4
-git push origin main v0.1.4
+git tag v0.1.5
+git push origin main v0.1.5
 ```
 
 GitHub Actions builds Lieve on Arch Linux, checks that the tag matches `src/version.h` and creates the
