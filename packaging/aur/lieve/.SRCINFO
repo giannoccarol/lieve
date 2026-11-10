@@ -1,6 +1,6 @@
 pkgbase = lieve
 	pkgdesc = Lightweight native code editor for KDE Plasma, with the look and shortcuts of VS Code
-	pkgver = 0.1.5
+	pkgver = 0.1.6
 	pkgrel = 1
 	url = https://github.com/giannoccarol/lieve
 	arch = x86_64
@@ -27,7 +27,7 @@ pkgbase = lieve
 	optdepends = konsole: Konsole as the terminal in the panel (otherwise Lieve's built-in one)
 	optdepends = nodejs: Prettier and ESLint on save, with the project's own packages
 	optdepends = typescript-language-server: go to definition, errors and completion for TypeScript/JavaScript
-	source = lieve-0.1.5.tar.gz::https://github.com/giannoccarol/lieve/archive/refs/tags/v0.1.5.tar.gz
-	sha256sums = 9418517c0f102414fd574e23150db98c6018567114d25dd5074858902087c3bf
+	source = lieve-0.1.6.tar.gz::https://github.com/giannoccarol/lieve/archive/refs/tags/v0.1.6.tar.gz
+	sha256sums = aad66d95f8a7388d0dfeb0662d022a1620dcdbc05ec2f155a9420f35700e5b83
 
 pkgname = lieve
