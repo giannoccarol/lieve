@@ -3,6 +3,11 @@
 Each version has its own section here: its text becomes the GitHub release notes and is what
 Lieve shows when it offers the update.
 
+## v0.1.6
+
+- Git panel: select several files with `Ctrl`+click and `Shift`+click, as in VS Code; stage, unstage,
+  discard, open and copy path act on all of them, and the selection stays when the panel refreshes.
+
 ## v0.1.5
 
 - Windows: Lieve runs on Windows 10/11 (64-bit) from a zip attached to each release, built with MSYS2: the
