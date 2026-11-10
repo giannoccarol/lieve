@@ -27,6 +27,8 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QTreeWidgetItemIterator>
+#include <QProcess>
 #include <QScrollBar>
 #include <QShortcut>
 #include <QStackedWidget>
@@ -413,6 +415,8 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
     m_tree->setMouseTracking(true);
     m_tree->setExpandsOnDoubleClick(false);
     m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_tree->setSelectionMode(QAbstractItemView::ExtendedSelection); // Ctrl / Shift + click
+    m_tree->viewport()->installEventFilter(this);
     auto *delegate = new GitDelegate(m_tree);
     m_tree->setItemDelegate(delegate);
     rl->addWidget(m_tree, 1);
@@ -535,6 +539,9 @@ GitPanel::GitPanel(GitRepo *repo, QWidget *parent)
             delegate->actionClicked = false;
             return;
         }
+        if (m_pressModifiers & (Qt::ControlModifier | Qt::ShiftModifier)) {
+            return; // choosing more files, as in VS Code: no diff
+        }
         activate(item);
     });
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *item) {
@@ -629,8 +636,53 @@ void GitPanel::showEvent(QShowEvent *event)
     m_repo->refresh();
 }
 
+namespace
+{
+// A row of the changes list, across refreshes (which rebuild the list).
+QString rowKey(QTreeWidgetItem *item)
+{
+    return item->data(0, GroupRole).toString() + QLatin1Char(':') + item->data(0, PathRole).toString();
+}
+}
+
 bool GitPanel::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == m_tree->viewport() && event->type() == QEvent::MouseButtonPress) {
+        const auto *mouse = static_cast<QMouseEvent *>(event);
+        m_pressModifiers = mouse->modifiers(); // for itemClicked
+        QTreeWidgetItem *item = m_tree->itemAt(mouse->position().toPoint());
+        if (mouse->button() == Qt::LeftButton && item && item->data(0, KindRole).toInt() == FileRow) {
+            if (!(mouse->modifiers() & Qt::ShiftModifier)) {
+                m_anchor = rowKey(item);
+            } else {
+                // Shift+click: the files from the last clicked one to this one. Qt's own
+                // anchor is lost whenever a refresh rebuilds the list (opening a diff does).
+                QList<QTreeWidgetItem *> files;
+                for (QTreeWidgetItemIterator it(m_tree); *it; ++it) {
+                    if ((*it)->data(0, KindRole).toInt() == FileRow) {
+                        files << *it;
+                    }
+                }
+                qsizetype from = -1;
+                for (qsizetype i = 0; i < files.size(); ++i) {
+                    if (rowKey(files.at(i)) == m_anchor) {
+                        from = i;
+                    }
+                }
+                const qsizetype to = files.indexOf(item);
+                if (from >= 0 && to >= 0) {
+                    if (!(mouse->modifiers() & Qt::ControlModifier)) {
+                        m_tree->clearSelection();
+                    }
+                    for (qsizetype i = std::min(from, to); i <= std::max(from, to); ++i) {
+                        files.at(i)->setSelected(true);
+                    }
+                    m_tree->setCurrentItem(item, 0, QItemSelectionModel::NoUpdate);
+                    return true;
+                }
+            }
+        }
+    }
     if (watched == m_message && event->type() == QEvent::KeyPress) {
         auto *key = static_cast<QKeyEvent *>(event);
         if ((key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) && (key->modifiers() & Qt::ControlModifier)) {
@@ -685,10 +737,19 @@ void GitPanel::rebuild()
     m_message->setPlaceholderText(tr("Message (Ctrl+Enter to commit on '%1')").arg(branch));
 
     // Keep the selection and the scroll position across refreshes
+    const auto keyOf = [](QTreeWidgetItem *item) {
+        return item->data(0, GroupRole).toString() + QLatin1Char(':') + item->data(0, PathRole).toString();
+    };
     QString selected;
     if (QTreeWidgetItem *current = m_tree->currentItem()) {
-        selected = current->data(0, GroupRole).toString() + QLatin1Char(':') + current->data(0, PathRole).toString();
+        selected = keyOf(current);
     }
+    QSet<QString> selection;
+    const auto selectedItems = m_tree->selectedItems();
+    for (QTreeWidgetItem *item : selectedItems) {
+        selection.insert(keyOf(item));
+    }
+    QList<QTreeWidgetItem *> toReselect;
     const int scroll = m_tree->verticalScrollBar()->value();
     m_tree->setUpdatesEnabled(false);
     m_tree->clear();
@@ -733,14 +794,23 @@ void GitPanel::rebuild()
             }
             item->setData(0, DirRole, dir);
             item->setToolTip(0, QStringLiteral("%1 • %2").arg(e.path, statusText(e.status)));
-            if (QString::number(int(group)) + QLatin1Char(':') + e.path == selected) {
+            const QString key = QString::number(int(group)) + QLatin1Char(':') + e.path;
+            if (key == selected) {
                 toSelect = item;
+            }
+            if (selection.contains(key)) {
+                toReselect << item;
             }
         }
         top->setExpanded(!m_collapsed.contains(int(group)));
     }
     if (toSelect) {
         m_tree->setCurrentItem(toSelect);
+    }
+    if (toReselect.size() > 1) {
+        for (QTreeWidgetItem *item : std::as_const(toReselect)) {
+            item->setSelected(true);
+        }
     }
     m_tree->setUpdatesEnabled(true);
     m_tree->verticalScrollBar()->setValue(scroll);
@@ -887,27 +957,65 @@ bool GitPanel::confirmDiscard(const QList<GitEntry> &entries)
     return box.clickedButton() == confirm;
 }
 
+QList<QTreeWidgetItem *> GitPanel::targetsOf(QTreeWidgetItem *item) const
+{
+    if (!item || item->data(0, KindRole).toInt() != FileRow || !item->isSelected()) {
+        return {item};
+    }
+    QList<QTreeWidgetItem *> rows;
+    const auto selected = m_tree->selectedItems();
+    for (QTreeWidgetItem *row : selected) {
+        if (row->data(0, KindRole).toInt() == FileRow) {
+            rows << row;
+        }
+    }
+    return rows.isEmpty() ? QList<QTreeWidgetItem *>{item} : rows;
+}
+
 void GitPanel::runAction(QTreeWidgetItem *item, Action action)
 {
-    const QList<GitEntry> entries = entriesOf(item);
+    QList<GitEntry> entries;
+    const QList<QTreeWidgetItem *> rows = targetsOf(item);
+    for (QTreeWidgetItem *row : rows) {
+        entries << entriesOf(row);
+    }
     if (entries.isEmpty()) {
         return;
     }
     switch (action) {
-    case OpenFile:
-        Q_EMIT openFileRequested(m_repo->absolutePath(entries.first().path));
-        break;
-    case Stage: {
-        QStringList paths;
-        for (const GitEntry &e : entries) {
-            paths << e.path;
+    case OpenFile: {
+        for (const GitEntry &e : std::as_const(entries)) {
+            if (e.status != QLatin1Char('D')) {
+                Q_EMIT openFileRequested(m_repo->absolutePath(e.path));
+            }
         }
-        m_repo->stage(paths);
         break;
     }
-    case Unstage:
-        m_repo->unstage(entries);
+    case Stage: {
+        QStringList paths;
+        for (const GitEntry &e : std::as_const(entries)) {
+            if (e.group != GitEntry::Staged) { // already staged ones stay as they are
+                paths << e.path;
+            }
+        }
+        paths.removeDuplicates();
+        if (!paths.isEmpty()) {
+            m_repo->stage(paths);
+        }
         break;
+    }
+    case Unstage: {
+        QList<GitEntry> staged;
+        for (const GitEntry &e : std::as_const(entries)) {
+            if (e.group == GitEntry::Staged) {
+                staged << e;
+            }
+        }
+        if (!staged.isEmpty()) {
+            m_repo->unstage(staged);
+        }
+        break;
+    }
     case Discard:
         if (confirmDiscard(entries)) {
             m_repo->discard(entries);
@@ -942,7 +1050,10 @@ void GitPanel::showMenu(const QPoint &pos)
                        tr("Open Changes"),
                        this,
                        [this, item] {
-                           activate(item);
+                           const QList<QTreeWidgetItem *> rows = targetsOf(item);
+                           for (QTreeWidgetItem *row : rows) {
+                               activate(row);
+                           }
                        });
         if (item->data(0, StatusRole).toString() != QLatin1String("D")) {
             menu.addAction(QIcon::fromTheme(QStringLiteral("document-open")), tr("Open File"), this, [this, item] {
@@ -962,12 +1073,20 @@ void GitPanel::showMenu(const QPoint &pos)
     }
     if (!section) {
         menu.addSeparator();
-        const QString path = item->data(0, PathRole).toString();
-        menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), tr("Copy Path"), this, [this, path] {
-            QApplication::clipboard()->setText(m_repo->absolutePath(path));
+        QStringList paths;
+        const QList<QTreeWidgetItem *> rows = targetsOf(item);
+        for (QTreeWidgetItem *row : rows) {
+            paths << row->data(0, PathRole).toString();
+        }
+        menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), tr("Copy Path"), this, [this, paths] {
+            QStringList absolute;
+            for (const QString &path : paths) {
+                absolute << m_repo->absolutePath(path);
+            }
+            QApplication::clipboard()->setText(absolute.join(QLatin1Char('\n')));
         });
-        menu.addAction(tr("Copy Relative Path"), this, [path] {
-            QApplication::clipboard()->setText(path);
+        menu.addAction(tr("Copy Relative Path"), this, [paths] {
+            QApplication::clipboard()->setText(paths.join(QLatin1Char('\n')));
         });
     }
     Q_UNUSED(group);
@@ -1042,6 +1161,68 @@ void GitPanel::runTest(const QString &steps)
             }
             if (step.startsWith(QLatin1String("shot:"))) {
                 window()->grab().save(QString(screenshot).replace(QStringLiteral(".png"), QLatin1Char('-') + step.mid(5) + QStringLiteral(".png")));
+                return;
+            }
+            // The changes list: "rows" (file rows, * = selected), "click:<n>[:ctrl|:shift]"
+            // (a real click on file row n), "button:<n>:<stage|unstage|discard|open>" (the
+            // row's hover button), "status" (git status --short).
+            QList<QTreeWidgetItem *> fileRows;
+            for (QTreeWidgetItemIterator it(m_tree); *it; ++it) {
+                if ((*it)->data(0, KindRole).toInt() == FileRow) {
+                    fileRows << *it;
+                }
+            }
+            const QStringList parts = step.split(QLatin1Char(':'));
+            if (step == QLatin1String("rows")) {
+                for (QTreeWidgetItem *row : std::as_const(fileRows)) {
+                    qInfo().noquote() << "row" << (row->isSelected() ? "*" : " ") << (row == m_tree->currentItem() ? ">" : " ") << row->data(0, GroupRole).toInt()
+                                      << row->data(0, PathRole).toString();
+                }
+                return;
+            }
+            if (step == QLatin1String("status")) {
+                QProcess git;
+                git.setWorkingDirectory(m_repo->root());
+                git.start(QStringLiteral("git"), {QStringLiteral("status"), QStringLiteral("--short")});
+                git.waitForFinished(3000);
+                qInfo().noquote() << "status" << QString::fromUtf8(git.readAllStandardOutput()).replace(QLatin1Char('\n'), QStringLiteral(" | "));
+                return;
+            }
+            if ((parts.value(0) == QLatin1String("click") || parts.value(0) == QLatin1String("button")) && parts.size() >= 2) {
+                QTreeWidgetItem *row = fileRows.value(parts.at(1).toInt());
+                if (!row) {
+                    qInfo().noquote() << "no row" << parts.at(1);
+                    return;
+                }
+                const QRect rect = m_tree->visualItemRect(row);
+                QPoint at = rect.center();
+                Qt::KeyboardModifiers modifiers = Qt::NoModifier;
+                if (parts.value(0) == QLatin1String("click")) {
+                    modifiers = parts.value(2) == QLatin1String("ctrl") ? Qt::ControlModifier : parts.value(2) == QLatin1String("shift") ? Qt::ShiftModifier : Qt::NoModifier;
+                } else {
+                    static const QHash<QString, Action> names = {{QStringLiteral("stage"), Stage}, {QStringLiteral("unstage"), Unstage},
+                                                                 {QStringLiteral("discard"), Discard}, {QStringLiteral("open"), OpenFile}};
+                    QStyleOptionViewItem option;
+                    option.rect = rect;
+                    option.state = QStyle::State_MouseOver | QStyle::State_Enabled;
+                    bool found = false;
+                    const auto rects = GitDelegate::actionRects(option, m_tree->indexFromItem(row));
+                    for (const auto &[action, buttonRect] : rects) {
+                        if (action == names.value(parts.value(2), Stage)) {
+                            at = buttonRect.center();
+                            found = true;
+                        }
+                    }
+                    if (!found) {
+                        qInfo().noquote() << "no button" << parts.value(2);
+                        return;
+                    }
+                }
+                for (const auto type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
+                    QMouseEvent event(type, at, m_tree->viewport()->mapToGlobal(at), Qt::LeftButton,
+                                      type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton, modifiers);
+                    QApplication::sendEvent(m_tree->viewport(), &event);
+                }
                 return;
             }
             if (step == QLatin1String("docs")) {

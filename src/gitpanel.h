@@ -68,6 +68,9 @@ private:
     void activate(QTreeWidgetItem *item);
     void showMenu(const QPoint &pos);
     QList<Lieve::GitEntry> entriesOf(QTreeWidgetItem *item) const;
+    // The rows an action on `item` applies to: every selected file when it is
+    // one of them (as in VS Code), else just `item`.
+    QList<QTreeWidgetItem *> targetsOf(QTreeWidgetItem *item) const;
     bool confirmDiscard(const QList<Lieve::GitEntry> &entries);
     GitPicker *picker(); // created on first use
 
@@ -81,6 +84,8 @@ private:
     QPushButton *m_commit = nullptr;
     QToolButton *m_commitMenu = nullptr;
     QTreeWidget *m_tree = nullptr;
+    Qt::KeyboardModifiers m_pressModifiers; // of the last press on the list: Ctrl / Shift only select
+    QString m_anchor; // the file a Shift+click selects from (group:path)
     QSet<int> m_collapsed; // collapsed sections, by group
     QPointer<GitPicker> m_picker;
     QList<QAction *> m_windowActions;
