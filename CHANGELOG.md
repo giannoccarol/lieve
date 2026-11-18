@@ -3,6 +3,12 @@
 Each version has its own section here: its text becomes the GitHub release notes and is what
 Lieve shows when it offers the update.
 
+## v0.1.7
+
+- The number of changed files on the Git icon of the activity bar is shown whole, no longer cut at the
+  edge of the icon.
+- The close button of the editor tabs is centred on the tab, with a rounded highlight on hover.
+
 ## v0.1.6
 
 - Git panel: select several files with `Ctrl`+click and `Shift`+click, as in VS Code; stage, unstage,
