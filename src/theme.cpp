@@ -227,6 +227,7 @@ QTreeView::branch:open:has-children:!has-siblings, QTreeView::branch:open:has-ch
 QTabWidget::pane { border: none; }
 QTabWidget::tab-bar { left: 0px; }
 QTabBar { background: transparent; }
+/* the vertical margins are also in tabview.cpp (kTabMarginTop/Bottom), which centres the × */
 QTabBar::tab { background: transparent; color: @dim; border: none; border-radius: 7px; padding: 4px 4px 4px 10px;
     margin: 6px 2px 2px 0px; min-width: 30px; }
 QTabBar::tab:first { margin-left: 8px; }
@@ -236,7 +237,7 @@ QTabBar::close-button { image: url(@close); subcontrol-position: right; margin-l
 QTabBar::close-button:hover { background: @hoverStrong; }
 QTabBar QToolButton { background: transparent; border: none; }
 QSplitter#editorSplit::handle { background: @border; }
-QToolButton#tabClose { background: transparent; border: none; border-radius: 5px; padding: 0px; margin: 0px 2px 0px 6px; }
+QToolButton#tabClose { background: transparent; border: none; border-radius: 5px; padding: 0px; margin: 0px 5px 0px 6px; }
 QToolButton#tabClose:hover { background: @hoverStrong; }
 QScrollArea#tabScroll, QScrollArea#tabScroll > QWidget, QScrollArea#tabScroll > QWidget > QWidget { background: transparent; }
 QScrollArea#tabScroll QScrollBar:horizontal { height: 3px; background: transparent; }
@@ -647,20 +648,8 @@ QIcon activityIcon(const QIcon &base, int badge)
                 p.setOpacity(state == QIcon::Off && mode == QIcon::Normal ? 0.55 : 1.0);
                 base.paint(&p, QRect(0, 0, size, size));
                 p.setOpacity(1.0);
-                if (badge > 0) {
-                    QFont font = QApplication::font();
-                    font.setPixelSize(9);
-                    font.setBold(true);
-                    p.setFont(font);
-                    const int h = 14;
-                    const int w = std::max(h, QFontMetrics(font).horizontalAdvance(text) + 7);
-                    const QRectF rect(size - w + 2, size - h + 2, w, h);
-                    p.setPen(Qt::NoPen);
-                    p.setBrush(g_colors.accent.isValid() ? g_colors.accent : QColor(0x3d, 0xae, 0xe9));
-                    p.drawRoundedRect(rect, h / 2.0, h / 2.0);
-                    p.setPen(g_colors.accentText.isValid() ? g_colors.accentText : QColor(Qt::white));
-                    p.drawText(rect, Qt::AlignCenter, text);
-                }
+                Q_UNUSED(badge) // drawn over the button by MainWindow: inside 24 px it was cut off
+                Q_UNUSED(text)
                 p.end();
                 icon.addPixmap(pixmap, mode, state);
             }

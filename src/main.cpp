@@ -782,7 +782,8 @@ void setupTestHooks(QApplication &app)
         }
         if (qEnvironmentVariableIsSet("LIEVE_TEST_HOVER")) { // show the hover look of the window buttons
             for (QToolButton *button : window->findChildren<QToolButton *>()) {
-                if (button->objectName() == QLatin1String("closeButton") || button->property("lieveRole").toString() == QLatin1String("minimize")) {
+                if (button->objectName() == QLatin1String("closeButton") || button->objectName() == QLatin1String("tabClose")
+                    || button->property("lieveRole").toString() == QLatin1String("minimize")) {
                     button->setAttribute(Qt::WA_UnderMouse, true);
                     button->update();
                 }

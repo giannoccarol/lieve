@@ -15,6 +15,13 @@
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
+namespace
+{
+// QTabBar::tab's vertical margins in the stylesheet (theme.cpp)
+constexpr int kTabMarginTop = 6;
+constexpr int kTabMarginBottom = 2;
+}
+
 TabView::TabView(QWidget *parent)
     : QWidget(parent)
 {
@@ -141,7 +148,9 @@ int TabView::insertTab(int index, QWidget *page, const QString &text)
     // × like VS Code: room always reserved, shown on the current tab and under the mouse.
     auto *close = new QToolButton(m_bar);
     close->setObjectName(QStringLiteral("tabClose"));
-    close->setFixedSize(20, 20);
+    // 20 x 20 inside the stylesheet's margins: 6 px after the title, 5 px before the tab's edge.
+    close->setFixedSize(31, 20);
+    close->installEventFilter(this); // centred on the tab as drawn, see eventFilter()
     close->setIconSize(QSize(16, 16));
     close->setAutoRaise(true);
     close->setFocusPolicy(Qt::NoFocus);
@@ -235,6 +244,21 @@ void TabView::ensureVisible(int index)
 
 bool TabView::eventFilter(QObject *watched, QEvent *event)
 {
+    // The tab bar centres the × on the whole tab, outer margins included (6 px above, 2
+    // below in the stylesheet): moved to the middle of the tab as it is drawn.
+    if (event->type() == QEvent::Move && watched->objectName() == QLatin1String("tabClose")) {
+        auto *button = static_cast<QWidget *>(watched);
+        for (int i = 0; i < m_bar->count(); ++i) {
+            if (m_bar->tabButton(i, QTabBar::RightSide) == button) {
+                const QRect tab = m_bar->tabRect(i).adjusted(0, kTabMarginTop, 0, -kTabMarginBottom);
+                const int y = tab.top() + (tab.height() - button->height()) / 2;
+                if (button->y() != y) {
+                    button->move(button->x(), y);
+                }
+                break;
+            }
+        }
+    }
     if (watched == m_bar && (event->type() == QEvent::MouseMove || event->type() == QEvent::Leave)) {
         const int hovered = event->type() == QEvent::Leave ? -1 : m_bar->tabAt(static_cast<QMouseEvent *>(event)->position().toPoint());
         if (hovered != m_hovered) {

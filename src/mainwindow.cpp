@@ -360,6 +360,74 @@ MainWindow::~MainWindow()
 // ---------------------------------------------------------------------------
 // UI
 
+namespace
+{
+// The number of changes on the Source Control button, like VS Code's badge:
+// a whole pill at the bottom right of the icon, over the button's padding
+// (inside the 24 px icon a two-digit count was cut off).
+class ActivityBadge : public QWidget
+{
+public:
+    explicit ActivityBadge(QWidget *button)
+        : QWidget(button)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        hide();
+        button->installEventFilter(this);
+    }
+    void setCount(int count)
+    {
+        m_text = count > 99 ? QStringLiteral("99+") : QString::number(count);
+        setVisible(count > 0);
+        place();
+        update();
+    }
+
+protected:
+    bool eventFilter(QObject *, QEvent *event) override
+    {
+        if (event->type() == QEvent::Resize || event->type() == QEvent::Show) {
+            place();
+        }
+        return false;
+    }
+    void paintEvent(QPaintEvent *) override
+    {
+        const Lieve::Colors &c = Theme::colors();
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(c.accent.isValid() ? c.accent : QColor(0x3d, 0xae, 0xe9));
+        const QRectF pill = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        p.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2);
+        p.setFont(badgeFont());
+        p.setPen(c.accentText.isValid() ? c.accentText : QColor(Qt::white));
+        p.drawText(rect(), Qt::AlignCenter, m_text);
+    }
+
+private:
+    static QFont badgeFont()
+    {
+        QFont font = QApplication::font();
+        font.setPixelSize(10);
+        font.setWeight(QFont::DemiBold);
+        return font;
+    }
+    void place()
+    {
+        QWidget *button = parentWidget();
+        const int h = 16;
+        const int w = std::max(h, QFontMetrics(badgeFont()).horizontalAdvance(m_text) + 8);
+        resize(w, h);
+        // the icon is centred in the button: the pill's centre sits on its bottom-right corner, a little in
+        const QPoint iconCorner = button->rect().center() + QPoint(12, 12);
+        move(std::min(iconCorner.x() - w / 2 + 2, button->width() - w - 2), std::min(iconCorner.y() - h / 2, button->height() - h - 1));
+        raise();
+    }
+    QString m_text;
+};
+}
+
 void MainWindow::buildUi()
 {
     // Window = title bar on top, then a body where side bar, editor and
@@ -405,6 +473,7 @@ void MainWindow::buildUi()
     m_actSearch = m_activityBar->addAction(Theme::activityIcon(themeIcon({"edit-find", "search", "system-search"})), tr("Search (Ctrl+Shift+F)"));
     m_gitIcon = themeIcon({"vcs-branch", "vcs-commit", "git"});
     m_actGit = m_activityBar->addAction(Theme::activityIcon(m_gitIcon), tr("Source Control (Ctrl+Shift+G)"));
+    m_gitBadge = new ActivityBadge(m_activityBar->widgetForAction(m_actGit));
     // Layout toggles live in the title bar, like VS Code's.
     m_actSidebar = new QAction(Theme::glyph(Theme::Glyph::Sidebar), tr("Side Bar (Ctrl+B)"), this);
     m_actTerminal = new QAction(Theme::glyph(Theme::Glyph::Panel), tr("Terminal (Ctrl+J)"), this);
@@ -2363,7 +2432,7 @@ QString MainWindow::documentTitle(KTextEditor::Document *doc) const
 void MainWindow::updateGitBadge()
 {
     const int count = m_git->isRepository() ? int(m_git->entries().size()) : 0;
-    m_actGit->setIcon(Theme::activityIcon(m_gitIcon, count));
+    static_cast<ActivityBadge *>(m_gitBadge)->setCount(count);
     m_actGit->setToolTip(count <= 0       ? tr("Source Control (Ctrl+Shift+G)")
                              : count == 1 ? tr("Source Control (Ctrl+Shift+G) — 1 change")
                                           : tr("Source Control (Ctrl+Shift+G) — %1 changes").arg(count));

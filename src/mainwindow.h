@@ -195,6 +195,7 @@ private:
     QAction *m_actExplorer = nullptr;
     QAction *m_actSearch = nullptr;
     QAction *m_actGit = nullptr;
+    QWidget *m_gitBadge = nullptr; // the changes count over the Source Control button
     QIcon m_gitIcon;
     QAction *m_actTerminal = nullptr;
     QAction *m_actSidebar = nullptr;
