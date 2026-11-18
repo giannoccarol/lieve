@@ -1,6 +1,6 @@
 pkgbase = lieve-git
 	pkgdesc = Lightweight native code editor for KDE Plasma, with the look and shortcuts of VS Code (development version)
-	pkgver = 0.1.6.r0.g959f1a9
+	pkgver = 0.1.7.r0.gd11126f
 	pkgrel = 1
 	url = https://github.com/giannoccarol/lieve
 	arch = x86_64

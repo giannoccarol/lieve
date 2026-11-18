@@ -1,6 +1,6 @@
 # Maintainer: Lorenzo Giannoccaro <93546162+giannoccarol@users.noreply.github.com>
 pkgname=lieve
-pkgver=0.1.6
+pkgver=0.1.7
 pkgrel=1
 pkgdesc='Lightweight native code editor for KDE Plasma, with the look and shortcuts of VS Code'
 arch=('x86_64' 'aarch64')
@@ -13,7 +13,7 @@ optdepends=('konsole: Konsole as the terminal in the panel (otherwise Lieve'"'"'
             'nodejs: Prettier and ESLint on save, with the project'"'"'s own packages'
             'typescript-language-server: go to definition, errors and completion for TypeScript/JavaScript')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('aad66d95f8a7388d0dfeb0662d022a1620dcdbc05ec2f155a9420f35700e5b83')
+sha256sums=('04e43ee7ddd658d6d8287cf20f822609452c6556d17ab02751693b7b60a9ea51')
 
 build() {
   cd "$pkgname-$pkgver"
